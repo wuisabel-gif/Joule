@@ -10,8 +10,12 @@ pub mod models;
 pub use models::{profile_for, ModelProfile};
 
 /// Default carbon intensity of grid electricity, grams CO2-equivalent per kWh.
-/// Roughly the 2023 global average; override per-deployment for accuracy.
-pub const DEFAULT_GRID_INTENSITY_G_PER_KWH: f64 = 400.0;
+///
+/// Set to the IEA 2024 global-average generation intensity (~445 g/kWh). For
+/// reference: US grid ~321, EU ~174, US data centers ~548 (they cluster in
+/// carbon-intensive regions), Norway hydro <20, Poland coal >700. Override
+/// per-deployment with `--grid-intensity` for accuracy.
+pub const DEFAULT_GRID_INTENSITY_G_PER_KWH: f64 = 445.0;
 
 /// The estimated footprint of a single inference.
 #[derive(Debug, Clone, Copy)]

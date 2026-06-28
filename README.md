@@ -76,6 +76,32 @@ LLM
 Instead of asking only *"How many tokens?"*, Joule asks the broader question:
 *"Was this computation necessary?"*
 
+## Grounding in measured data
+
+Joule's per-token figures are estimates, but they are **calibrated to published
+measurements**, not guessed. The `gpt-4o` profile is anchored so a ~500-output-
+token query lands near **0.3 Wh** on optimized H100 serving — Epoch AI's
+estimate — and other models are scaled from there by size/class.
+
+| Quantity | Published figure | Source |
+|----------|------------------|--------|
+| GPT-4o query (~500 out, H100) | **~0.3 Wh** (≈2.0 J/output token) | [Epoch AI](https://epoch.ai/gradient-updates/how-much-energy-does-chatgpt-use) |
+| GPT-4o by prompt length | **0.42 → 1.59 Wh** (short → long) | [How Hungry is AI? (2505.09598)](https://arxiv.org/html/2505.09598v1) |
+| Per output token, A100 | **~1.72 J** | [Systematic Characterization (2512.01644)](https://arxiv.org/pdf/2512.01644) |
+| Per token, LLaMA-65B V100/A100 | **~3–4 J** | From Words to Watts (Samsi 2023) |
+| Per token, H100 + FP8 + batch-128 | **~0.39 J** (best case) | [Muxup](https://muxup.com/2026q1/per-query-energy-consumption-of-llms) |
+| Long input (100k tokens) | **~40 Wh** (quadratic attention) | [Epoch AI](https://epoch.ai/gradient-updates/how-much-energy-does-chatgpt-use) |
+| Small vs large model | **3–11×** less energy (up to 90% via routing) | [Nature s41598](https://www.nature.com/articles/s41598-026-45023-0) |
+| FP8 / INT8 quantization | INT8 **≥1.6×** more efficient than FP16 | [van Baalen 2023 (2303.17951)](https://arxiv.org/pdf/2303.17951) |
+| Batching (32 → 256) | **~25%** less J/token; batch-1 is 50–100× worse | [HotCarbon 2025](https://hotcarbon.org/assets/2025/paper-11.pdf) |
+| Grid carbon intensity (global avg) | **445 g/kWh** (IEA 2024) — the default | [Carbon Brief](https://www.carbonbrief.org/ai-five-charts-that-put-data-centre-energy-use-and-emissions-into-context/) |
+| Grid spread | **<20** (Norway hydro) → **>700** (Poland coal) | [ScienceDirect](https://www.sciencedirect.com/science/article/pii/S2666389925002788) |
+
+Numbers vary by hardware, batching, and quantization, so these are a
+transparent default — not a claim of precision. See
+[`src/estimator/models.rs`](src/estimator/models.rs) for per-model values and
+their calibration comments.
+
 ## What Phase 1 does
 
 - **OpenAI-compatible proxy** — point your client's base URL at Joule; it
@@ -98,9 +124,11 @@ Per-request results are also returned to the client as response headers:
 `x-joule-energy-j`, `x-joule-electricity-wh`, `x-joule-co2-g`,
 `x-joule-cost-usd`, `x-joule-token-source`.
 
-> The per-token energy figures in `src/estimator/models.rs` are first-order
-> estimates, not measurements. They are meant to be refined with real hardware
-> data — making energy *observable* is the point; precision is a later phase.
+> The per-token energy figures in `src/estimator/models.rs` are estimates, not
+> measurements — but they are calibrated to published benchmarks (see
+> [Grounding in measured data](#grounding-in-measured-data)). Making energy
+> *observable* is the point; per-deployment precision comes from
+> `--grid-intensity` and refining the profiles.
 
 ## Build
 
@@ -165,16 +193,18 @@ config file).
 ### As a standalone prompt improver
 
 ```sh
-echo "Could you please summarize this paper." | joule optimize --level full --model gpt-4o
+printf 'Could you please summarize this paper.\nCould you please summarize this paper.\n\n\nKindly focus on the methodology and conclusions.' \
+  | joule optimize --level full --model gpt-4o
 ```
 
 ```
 Optimization Summary (full)
   ✓ normalized whitespace in 1 message(s)
+  ✓ collapsed repeated lines in 1 message(s)
   ✓ removed filler phrases in 1 message(s)
-  Prompt tokens: 49 → 18 (−31, 63% saved)
+  Prompt tokens: 49 → 23 (−26, 53% saved)
 
-Prompt energy (input side) for gpt-4o: 19.600 J → 7.200 J (saved 12.400 J)
+Prompt energy (input side) for gpt-4o: 29.400 J → 13.800 J (saved 15.600 J)
 ```
 
 ## Providers & routing (plugins)
@@ -253,7 +283,7 @@ joule models
 | `--optimize` | — | `lite` | `off`, `lite`, `full`, or `ultra` |
 | `--api-key` | `JOULE_UPSTREAM_API_KEY` | — | fallback credential |
 | `--db` | `JOULE_DB` | `joule.db` | SQLite request log |
-| `--grid-intensity` | `JOULE_GRID_INTENSITY` | `400` | g CO₂ / kWh |
+| `--grid-intensity` | `JOULE_GRID_INTENSITY` | `445` | g CO₂ / kWh (IEA 2024 global avg) |
 
 ## Test
 
