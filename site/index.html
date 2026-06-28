@@ -5,7 +5,18 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Joule — energy-aware optimization for LLM inference</title>
 <meta name="description" content="Joule measures the joules, CO₂, and cost of every LLM request, optimizes the prompt, and routes to greener models. An OpenAI-compatible proxy in Rust." />
+<meta name="theme-color" content="#0A2A1B" />
 <link rel="icon" href="assets/joule-mark.svg" type="image/svg+xml" />
+<link rel="canonical" href="https://wuisabel-gif.github.io/Joule/" />
+<meta property="og:type" content="website" />
+<meta property="og:title" content="Joule — energy-aware optimization for LLM inference" />
+<meta property="og:description" content="Measure the joules, CO₂, and cost of every LLM request — then optimize the prompt and route to greener models. An OpenAI-compatible proxy in Rust." />
+<meta property="og:url" content="https://wuisabel-gif.github.io/Joule/" />
+<meta property="og:image" content="https://wuisabel-gif.github.io/Joule/assets/joule-og.png" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="Joule — energy-aware optimization for LLM inference" />
+<meta name="twitter:description" content="Measure the joules, CO₂, and cost of every LLM request — then optimize and route to greener models." />
+<meta name="twitter:image" content="https://wuisabel-gif.github.io/Joule/assets/joule-og.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
@@ -99,7 +110,7 @@ a{ color:inherit; text-decoration:none; }
 .hero-grid{ display:grid; grid-template-columns:1.08fr 0.92fr; gap:clamp(2rem,5vw,4rem); align-items:center; }
 @media (max-width:920px){ .hero-grid{ grid-template-columns:1fr; gap:2.5rem; } }
 
-.hero h1{ font-size:clamp(2.6rem, 6vw, 5rem); font-weight:900; }
+.hero h1{ font-size:clamp(2.2rem, 6.8vw, 5rem); font-weight:900; overflow-wrap:break-word; }
 .hero h1 .q{ color:var(--signal); }
 .hero .lede{ margin-top:1.4rem; font-size:clamp(1.05rem,1.5vw,1.28rem); color:var(--muted); max-width:34ch; }
 .hero .ctas{ margin-top:2.1rem; display:flex; flex-wrap:wrap; gap:0.8rem; align-items:center; }
@@ -224,6 +235,12 @@ section{ position:relative; }
 .router .rn{ font-family:var(--mono); font-size:0.85rem; color:var(--signal); }
 .router p{ color:var(--muted); font-size:0.88rem; margin-top:0.25rem; }
 
+.check{ list-style:none; margin:0.3rem 0 0; padding:0; display:flex; flex-direction:column; gap:0.75rem; }
+.check li{ position:relative; padding-left:1.9rem; color:var(--muted); font-size:0.97rem; }
+.check li::before{ position:absolute; left:0; top:0.02rem; font-family:var(--mono); font-size:0.95rem; }
+.check.shipped li::before{ content:"✓"; color:var(--signal); }
+.check.next li::before{ content:"○"; color:var(--faint); }
+
 /* numbers */
 .numbers{ width:100%; border-collapse:collapse; font-size:0.92rem; }
 .numbers th{ text-align:left; font-family:var(--mono); font-size:0.72rem; color:var(--faint);
@@ -258,6 +275,9 @@ footer{ border-top:1px solid var(--line-soft); padding-block:2.5rem 3rem; }
 .foot-links{ display:flex; gap:1.4rem; font-size:0.88rem; color:var(--muted); flex-wrap:wrap; }
 .foot-links a:hover{ color:var(--ink); }
 .foot small{ color:var(--faint); font-family:var(--mono); font-size:0.72rem; }
+.foot-legal{ display:flex; justify-content:space-between; gap:1rem 2rem; flex-wrap:wrap;
+  margin-top:1.6rem; padding-top:1.3rem; border-top:1px solid var(--line-soft); }
+.foot-legal small{ color:var(--faint); font-family:var(--mono); font-size:0.72rem; }
 
 /* reveal */
 .reveal{ opacity:1; }
@@ -313,10 +333,10 @@ footer{ border-top:1px solid var(--line-soft); padding-block:2.5rem 3rem; }
           <span class="readout-live"><i class="pulse"></i> measured</span>
         </div>
         <div class="gauge"><i></i></div>
-        <div class="rrow"><span class="k">x-joule-energy-j</span><span class="val s" data-count="2.60" data-suffix=" J">0.00 J</span></div>
-        <div class="rrow"><span class="k">x-joule-electricity-wh</span><span class="val" data-count="0.000722" data-dp="6" data-suffix=" Wh">0 Wh</span></div>
-        <div class="rrow"><span class="k">x-joule-co2-g</span><span class="val" data-count="0.000321" data-dp="6" data-suffix=" g">0 g</span></div>
-        <div class="rrow"><span class="k">x-joule-cost-usd</span><span class="val a" data-count="0.0000047" data-dp="7" data-prefix="$">$0</span></div>
+        <div class="rrow"><span class="k">x-joule-energy-j</span><span class="val s" data-count="6.00" data-suffix=" J">0.00 J</span></div>
+        <div class="rrow"><span class="k">x-joule-electricity-wh</span><span class="val" data-count="0.001667" data-dp="6" data-suffix=" Wh">0 Wh</span></div>
+        <div class="rrow"><span class="k">x-joule-co2-g</span><span class="val" data-count="0.000742" data-dp="6" data-suffix=" g">0 g</span></div>
+        <div class="rrow"><span class="k">x-joule-cost-usd</span><span class="val a" data-count="0.0000066" data-dp="7" data-prefix="$">$0</span></div>
         <div class="rrow"><span class="k">x-joule-token-source</span><span class="rtag">provider</span></div>
         <div class="rrow"><span class="k">x-joule-optimizations</span><span class="val s" style="font-size:0.74rem">strip-filler · dedup</span></div>
       </aside>
@@ -330,12 +350,12 @@ footer{ border-top:1px solid var(--line-soft); padding-block:2.5rem 3rem; }
         <p class="manifesto">The cheapest token is the one you <b>never generate</b>.</p>
         <p style="color:var(--muted); margin-top:1.4rem; max-width:38ch;">AI energy is burned at every layer — from the prompt down to the grid. Joule starts where you have the most leverage and the least visibility: making it <em>measurable</em>.</p>
       </div>
-      <div class="stack-list reveal" aria-label="Energy stack layers">
-        <div class="stack-row on"><span class="layer">User</span><span>Better prompts</span><span class="impact">fewer tokens · ✓</span></div>
-        <div class="stack-row on"><span class="layer">Model</span><span>Smaller / specialized models</span><span class="impact">3–11× less · ✓</span></div>
-        <div class="stack-row off"><span class="layer">App</span><span>Semantic caching</span><span class="impact">avoid inference · next</span></div>
-        <div class="stack-row on"><span class="layer">Inference</span><span>Quantization (FP8 / INT8)</span><span class="impact">≥1.6× · measured</span></div>
-        <div class="stack-row off"><span class="layer">Grid</span><span>Carbon-aware scheduling</span><span class="impact">35× spread · next</span></div>
+      <div class="stack-list reveal" aria-label="Energy stack layers and Joule's coverage">
+        <div class="stack-row on"><span class="layer">User</span><span>Better prompts · fewer tokens</span><span class="impact">shipped</span></div>
+        <div class="stack-row on"><span class="layer">Model</span><span>Smaller models · 3–11× less</span><span class="impact">shipped</span></div>
+        <div class="stack-row off"><span class="layer">App</span><span>Semantic caching · skip inference</span><span class="impact">next</span></div>
+        <div class="stack-row off"><span class="layer">Inference</span><span>Quantization · ≥1.6× (FP8/INT8)</span><span class="impact">provider-side</span></div>
+        <div class="stack-row off"><span class="layer">Grid</span><span>Carbon-aware · 35× cleaner</span><span class="impact">next</span></div>
       </div>
     </div>
   </section>
@@ -395,9 +415,9 @@ footer{ border-top:1px solid var(--line-soft); padding-block:2.5rem 3rem; }
         <div class="term reveal">
           <div class="term-bar"><span class="lights"><i></i><i></i><i></i></span><span class="title">response headers</span></div>
 <pre><span class="hd">HTTP/1.1 200 OK</span>
-x-joule-energy-j: <span class="v">2.6000</span>
-x-joule-co2-g: <span class="v">0.000321</span>
-x-joule-cost-usd: <span class="va">0.000005</span>
+x-joule-energy-j: <span class="v">6.0000</span>
+x-joule-co2-g: <span class="v">0.000742</span>
+x-joule-cost-usd: <span class="va">0.000007</span>
 x-joule-token-source: <span class="v">provider</span>
 x-joule-model: <span class="v">gpt-4o-mini</span>
 x-joule-route: <span class="v">model → openai</span>
@@ -486,6 +506,38 @@ Prompt energy <span class="cm">(gpt-4o)</span>:
     </div>
   </section>
 
+  <!-- STATUS -->
+  <section class="band" id="status">
+    <div class="wrap">
+      <div class="section-head reveal">
+        <span class="eyebrow">honest about the work</span>
+        <h2>Shipped in v0.1.0 — more on the way.</h2>
+        <p>Joule measures, optimizes, and routes today. The biggest unbuilt lever — caching a repeat question down to near-zero energy — is what's next.</p>
+      </div>
+      <div class="split">
+        <div class="panel reveal">
+          <h3>Shipped</h3>
+          <ul class="check shipped">
+            <li>Measuring proxy — energy, CO₂, cost on every request</li>
+            <li>Prompt optimizer — lite / full / ultra passes</li>
+            <li>Routing — static, model, and energy-aware greenest</li>
+            <li>OpenAI, Anthropic &amp; Gemini providers, translated</li>
+            <li>Prometheus metrics, SQLite request log, CLI</li>
+          </ul>
+        </div>
+        <div class="panel reveal">
+          <h3>On the roadmap</h3>
+          <ul class="check next">
+            <li>Semantic cache — turn a repeat question into ~0 J</li>
+            <li>Carbon-aware scheduling — defer to cleaner grids</li>
+            <li>Real tokenizer — exact counts, not the ~4-char heuristic</li>
+            <li>OpenTelemetry traces and a live dashboard</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <!-- QUICKSTART -->
   <section class="band band-deep" id="quickstart">
     <div class="wrap qs-grid">
@@ -541,7 +593,11 @@ Prompt energy <span class="cm">(gpt-4o)</span>:
       <a href="https://github.com/wuisabel-gif/Joule/blob/main/CHANGELOG.md">Changelog</a>
       <a href="https://github.com/wuisabel-gif/Joule/blob/main/LICENSE">License</a>
     </div>
-    <small>Apache-2.0 · built in Rust</small>
+    <small>built in Rust</small>
+  </div>
+  <div class="wrap foot-legal">
+    <small>© 2026 Joule contributors · Licensed under Apache-2.0</small>
+    <small>Energy figures are calibrated estimates, not meter readings.</small>
   </div>
 </footer>
 

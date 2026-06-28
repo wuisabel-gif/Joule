@@ -1,0 +1,5 @@
+# Keep GitHub's language statistics focused on the Rust source.
+# The marketing site is not part of the library's language breakdown.
+site/**            linguist-vendored
+*.html             linguist-vendored
+*.svg              linguist-vendored

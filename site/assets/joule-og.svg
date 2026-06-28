@@ -1,0 +1,38 @@
+<svg width="1200" height="630" viewBox="0 0 1200 630" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="ogbg" x1="0" y1="0" x2="1200" y2="630" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0E3A24"/><stop offset="0.55" stop-color="#0A2A1B"/><stop offset="1" stop-color="#071C12"/>
+    </linearGradient>
+    <radialGradient id="ogglow" cx="0.5" cy="0.18" r="0.7">
+      <stop stop-color="#34E08A" stop-opacity="0.22"/><stop offset="1" stop-color="#34E08A" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="ogbolt" x1="68" y1="20" x2="148" y2="172" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#9CFFCB"/><stop offset="1" stop-color="#2FE08A"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="630" fill="url(#ogbg)"/>
+  <rect width="1200" height="630" fill="url(#ogglow)"/>
+  <rect x="40" y="40" width="1120" height="550" rx="32" stroke="#43C383" stroke-opacity="0.25" stroke-width="2"/>
+
+  <!-- mark -->
+  <g transform="translate(525,118)">
+    <rect x="0" y="0" width="150" height="150" rx="38" fill="#0B2A1B"/>
+    <rect x="1" y="1" width="148" height="148" rx="37" stroke="#43C383" stroke-opacity="0.5" stroke-width="2"/>
+    <path d="M38 106 A47 47 0 1 1 112 106" stroke="#43C383" stroke-opacity="0.28" stroke-width="4.5" stroke-linecap="round" fill="none"/>
+    <path d="M38 106 A47 47 0 0 1 41 49" stroke="url(#ogbolt)" stroke-opacity="0.75" stroke-width="4.5" stroke-linecap="round" fill="none"/>
+    <path d="M82 19 L44 79 H66 L62 130 L102 66 H79 L82 19 Z" fill="url(#ogbolt)"/>
+  </g>
+
+  <text x="600" y="375" text-anchor="middle" font-family="'Helvetica Neue', Arial, sans-serif" font-size="118" font-weight="800" letter-spacing="-5" fill="#F2FBF4">Joule</text>
+  <text x="600" y="430" text-anchor="middle" font-family="ui-monospace, 'SF Mono', Menlo, monospace" font-size="26" letter-spacing="0.5" fill="#8FD9AE">Energy-aware optimization for LLM inference</text>
+
+  <!-- readout chip -->
+  <g transform="translate(437,478)">
+    <rect x="0" y="0" width="326" height="46" rx="12" fill="#0C3322" stroke="#2E7D54" stroke-opacity="0.55"/>
+    <circle cx="27" cy="23" r="5" fill="#34E08A"/>
+    <text x="46" y="30" font-family="ui-monospace, 'SF Mono', Menlo, monospace" font-size="19" fill="#A9E8C4">x-joule-energy-j: </text>
+    <text x="248" y="30" font-family="ui-monospace, 'SF Mono', Menlo, monospace" font-size="19" font-weight="600" fill="#5DF2A1">6.00 J</text>
+  </g>
+
+  <text x="600" y="566" text-anchor="middle" font-family="ui-monospace, 'SF Mono', Menlo, monospace" font-size="17" letter-spacing="1" fill="#5E9B7B">OpenAI · Anthropic · Gemini   —   Apache-2.0   —   Rust</text>
+</svg>
