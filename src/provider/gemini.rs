@@ -156,7 +156,10 @@ impl Provider for GeminiProvider {
         } else {
             ("generateContent", "")
         };
-        let url = format!("{}/v1beta/models/{}:{}{}", self.base_url, model, method, suffix);
+        let url = format!(
+            "{}/v1beta/models/{}:{}{}",
+            self.base_url, model, method, suffix
+        );
         let body = self.to_gemini(canonical);
         let rb = client.post(url).json(&body);
         Ok(self.authorize(rb, client_headers))
@@ -294,7 +297,12 @@ mod tests {
         let p = provider();
         let canonical = json!({ "stream": true, "messages": [] });
         let rb = p
-            .build_chat_request(&reqwest::Client::new(), &canonical, "gemini-1.5-pro", &HeaderMap::new())
+            .build_chat_request(
+                &reqwest::Client::new(),
+                &canonical,
+                "gemini-1.5-pro",
+                &HeaderMap::new(),
+            )
             .unwrap();
         let req = rb.build().unwrap();
         assert!(req.url().as_str().contains(":streamGenerateContent"));

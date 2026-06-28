@@ -110,7 +110,10 @@ fn estimate(args: EstimateArgs) {
     let e = estimator.estimate(&args.model, args.input, args.output);
     let profile = models::profile_for(&args.model);
 
-    println!("Model:           {} (profile: {})", args.model, profile.family);
+    println!(
+        "Model:           {} (profile: {})",
+        args.model, profile.family
+    );
     println!("Input tokens:    {}", args.input);
     println!("Output tokens:   {}", args.output);
     println!("Energy:          {:.3} J", e.energy_j);
@@ -148,7 +151,11 @@ fn optimize(args: OptimizeArgs) -> Result<()> {
 
     println!("{}", report.summary());
     println!();
-    let verb = if energy_saved >= 0.0 { "saved" } else { "added" };
+    let verb = if energy_saved >= 0.0 {
+        "saved"
+    } else {
+        "added"
+    };
     println!(
         "Prompt energy (input side) for {}: {:.3} J \u{2192} {:.3} J ({} {:.3} J)",
         args.model,
@@ -177,7 +184,11 @@ fn list_models() {
     for p in models::all() {
         println!(
             "{:<22} {:>10.3} {:>10.3} {:>12.3} {:>12.3}",
-            p.family, p.j_per_input_token, p.j_per_output_token, p.usd_per_m_input, p.usd_per_m_output
+            p.family,
+            p.j_per_input_token,
+            p.j_per_output_token,
+            p.usd_per_m_input,
+            p.usd_per_m_output
         );
     }
 }

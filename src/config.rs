@@ -83,8 +83,8 @@ pub struct Config {
 impl Config {
     /// Load configuration from a JSON file.
     pub fn from_file(path: &str) -> Result<Self> {
-        let raw = std::fs::read_to_string(path)
-            .with_context(|| format!("reading config file {path}"))?;
+        let raw =
+            std::fs::read_to_string(path).with_context(|| format!("reading config file {path}"))?;
         let config: Config =
             serde_json::from_str(&raw).with_context(|| format!("parsing config file {path}"))?;
         if config.providers.is_empty() {
@@ -164,7 +164,10 @@ impl Config {
             };
             providers.push(provider);
         }
-        Ok(ProviderRegistry::new(providers, self.default_provider_name()))
+        Ok(ProviderRegistry::new(
+            providers,
+            self.default_provider_name(),
+        ))
     }
 
     /// Instantiate the configured routing policy.

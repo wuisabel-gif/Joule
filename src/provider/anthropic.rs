@@ -204,7 +204,9 @@ impl Provider for AnthropicProvider {
 
     fn stream_completion_tokens(&self, event: &Value) -> Option<u64> {
         // message_delta: { usage: { output_tokens } }.
-        event.pointer("/usage/output_tokens").and_then(Value::as_u64)
+        event
+            .pointer("/usage/output_tokens")
+            .and_then(Value::as_u64)
     }
 }
 

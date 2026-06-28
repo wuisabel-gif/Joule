@@ -129,6 +129,7 @@ impl Metrics {
     }
 
     /// Record one completed request.
+    #[allow(clippy::too_many_arguments)]
     pub fn observe(
         &self,
         model: &str,

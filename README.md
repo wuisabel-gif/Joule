@@ -1,5 +1,8 @@
 # Joule
 
+[![CI](https://github.com/wuisabel-gif/Joule/actions/workflows/ci.yml/badge.svg)](https://github.com/wuisabel-gif/Joule/actions/workflows/ci.yml)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+
 Energy-aware optimization middleware for LLM inference.
 
 Joule sits between your application and an LLM provider, speaking the
@@ -121,7 +124,7 @@ Luccioni et al. 2024; Samsi et al. 2023; and others).
 - **Metrics** — Prometheus exposition at `/metrics`, labelled by model.
 - **Request log** — every request is persisted to SQLite and summarised at
   `/stats`.
-- **CLI** — `serve`, `estimate`, and `models`.
+- **CLI** — `serve`, `estimate`, `optimize`, and `models`.
 
 Per-request results are also returned to the client as response headers:
 `x-joule-energy-j`, `x-joule-electricity-wh`, `x-joule-co2-g`,
@@ -139,6 +142,35 @@ Per-request results are also returned to the client as response headers:
 cargo build --release
 # single portable binary at target/release/joule
 ```
+
+Or with Docker:
+
+```sh
+docker build -t joule .
+docker run -p 8080:8080 -e JOULE_UPSTREAM=https://api.openai.com joule
+```
+
+## Quickstart (no API key, local Ollama)
+
+The fastest way to see Joule work end-to-end is against a local
+[Ollama](https://ollama.com) server — no API key, no cloud, no cost:
+
+```sh
+ollama serve &                      # start Ollama
+ollama pull llama3.2                 # any local model
+
+# Point Joule at Ollama's OpenAI-compatible endpoint
+cargo run -- serve --upstream http://localhost:11434 --listen 127.0.0.1:8080
+
+# Send a request through Joule and watch the energy headers come back
+curl -s http://127.0.0.1:8080/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model":"llama3.2","messages":[{"role":"user","content":"Hello!"}]}' \
+  -i | grep -i x-joule
+```
+
+You'll see `x-joule-energy-j`, `x-joule-co2-g`, and friends on the response, and
+running totals at `http://127.0.0.1:8080/stats`.
 
 ## Run the proxy
 

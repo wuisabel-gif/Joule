@@ -159,9 +159,7 @@ impl Router for GreenestRouter {
         if let Some((provider, chosen, energy)) = best {
             return Ok(RouteDecision {
                 provider,
-                reason: format!(
-                    "greenest: {chosen} (~{energy:.1} J / sample) instead of {model}"
-                ),
+                reason: format!("greenest: {chosen} (~{energy:.1} J / sample) instead of {model}"),
                 model: chosen,
             });
         }
@@ -207,7 +205,10 @@ mod tests {
     fn model_router_picks_by_support() {
         let r = ModelRouter::new("openai".into());
         let reg = registry();
-        assert_eq!(r.route(&reg, "claude-3-opus").unwrap().provider.name(), "anthropic");
+        assert_eq!(
+            r.route(&reg, "claude-3-opus").unwrap().provider.name(),
+            "anthropic"
+        );
         assert_eq!(r.route(&reg, "gpt-4o").unwrap().provider.name(), "openai");
     }
 

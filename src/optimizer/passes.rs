@@ -93,9 +93,7 @@ impl Pass for DedupMessages {
         OptLevel::Lite
     }
     fn apply(&self, request: &mut Value) -> Option<String> {
-        let Some(messages) = request.get("messages").and_then(Value::as_array) else {
-            return None;
-        };
+        let messages = request.get("messages").and_then(Value::as_array)?;
         let mut seen: HashSet<String> = HashSet::new();
         let mut kept: Vec<Value> = Vec::with_capacity(messages.len());
         let mut removed = 0;
@@ -241,9 +239,7 @@ impl Pass for BrevityHint {
         OptLevel::Ultra
     }
     fn apply(&self, request: &mut Value) -> Option<String> {
-        let Some(messages) = request.get_mut("messages").and_then(Value::as_array_mut) else {
-            return None;
-        };
+        let messages = request.get_mut("messages").and_then(Value::as_array_mut)?;
 
         // Append to an existing leading system message if present...
         if let Some(first) = messages.first_mut() {
@@ -276,7 +272,10 @@ mod tests {
 
     #[test]
     fn remove_ci_is_case_insensitive() {
-        assert_eq!(remove_ci("Please do X. please do Y.", "please "), "do X. do Y.");
+        assert_eq!(
+            remove_ci("Please do X. please do Y.", "please "),
+            "do X. do Y."
+        );
     }
 
     #[test]

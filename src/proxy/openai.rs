@@ -86,7 +86,10 @@ mod tests {
         let mut acc = SseAccumulator::default();
         acc.feed(b"data: {\"choices\":[{\"delta\":{\"content\":\"Hel", &p);
         acc.feed(b"lo\"}}]}\n\n", &p);
-        acc.feed(b"data: {\"choices\":[{\"delta\":{\"content\":\" world\"}}]}\n\n", &p);
+        acc.feed(
+            b"data: {\"choices\":[{\"delta\":{\"content\":\" world\"}}]}\n\n",
+            &p,
+        );
         acc.feed(b"data: [DONE]\n\n", &p);
         assert_eq!(acc.content(), "Hello world");
         assert_eq!(acc.usage(), None);

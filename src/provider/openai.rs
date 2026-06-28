@@ -98,7 +98,9 @@ impl Provider for OpenAiCompatibleProvider {
     }
 
     fn stream_prompt_tokens(&self, event: &Value) -> Option<u64> {
-        event.pointer("/usage/prompt_tokens").and_then(Value::as_u64)
+        event
+            .pointer("/usage/prompt_tokens")
+            .and_then(Value::as_u64)
     }
 
     fn stream_completion_tokens(&self, event: &Value) -> Option<u64> {
@@ -114,16 +116,11 @@ mod tests {
 
     #[test]
     fn wildcard_and_prefix_matching() {
-        let wild =
-            OpenAiCompatibleProvider::new("a".into(), "http://x".into(), None, vec![]);
+        let wild = OpenAiCompatibleProvider::new("a".into(), "http://x".into(), None, vec![]);
         assert!(wild.supports_model("anything"));
 
-        let scoped = OpenAiCompatibleProvider::new(
-            "b".into(),
-            "http://x".into(),
-            None,
-            vec!["gpt-".into()],
-        );
+        let scoped =
+            OpenAiCompatibleProvider::new("b".into(), "http://x".into(), None, vec!["gpt-".into()]);
         assert!(scoped.supports_model("gpt-4o"));
         assert!(!scoped.supports_model("claude-3-opus"));
     }

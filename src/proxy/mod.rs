@@ -307,7 +307,10 @@ fn stream_response(
         .header("x-joule-provider", &ctx.provider_name)
         .header("x-joule-route", &ctx.route_reason)
         .header("x-joule-optimized", ctx.optimization.optimized.to_string())
-        .header("x-joule-prompt-saved-tokens", ctx.optimization.tokens_saved.to_string())
+        .header(
+            "x-joule-prompt-saved-tokens",
+            ctx.optimization.tokens_saved.to_string(),
+        )
         .header("x-joule-optimizations", &ctx.optimization.passes)
         .header("x-joule-streamed", "true");
 
@@ -325,7 +328,7 @@ fn stream_response(
                     yield Ok::<Bytes, std::io::Error>(chunk);
                 }
                 Err(e) => {
-                    yield Err(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()));
+                    yield Err(std::io::Error::other(e.to_string()));
                     break;
                 }
             }
@@ -411,13 +414,22 @@ fn with_joule_headers(
         .header("x-joule-route", &ctx.route_reason)
         .header("x-joule-model", &ctx.model)
         .header("x-joule-energy-j", format!("{:.4}", estimate.energy_j))
-        .header("x-joule-electricity-wh", format!("{:.6}", estimate.electricity_wh))
+        .header(
+            "x-joule-electricity-wh",
+            format!("{:.6}", estimate.electricity_wh),
+        )
         .header("x-joule-co2-g", format!("{:.6}", estimate.co2_g))
         .header("x-joule-cost-usd", format!("{:.6}", estimate.cost_usd))
         .header("x-joule-token-source", source.as_str())
         .header("x-joule-optimized", ctx.optimization.optimized.to_string())
-        .header("x-joule-prompt-saved-tokens", ctx.optimization.tokens_saved.to_string())
-        .header("x-joule-energy-saved-j", format!("{:.4}", ctx.optimization.energy_saved_j))
+        .header(
+            "x-joule-prompt-saved-tokens",
+            ctx.optimization.tokens_saved.to_string(),
+        )
+        .header(
+            "x-joule-energy-saved-j",
+            format!("{:.4}", ctx.optimization.energy_saved_j),
+        )
         .header("x-joule-optimizations", &ctx.optimization.passes)
         .header("x-joule-streamed", streamed.to_string())
 }
