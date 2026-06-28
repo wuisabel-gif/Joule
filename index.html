@@ -1,0 +1,976 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Joule — Energy-aware optimization for LLM inference</title>
+<meta name="description" content="Joule makes energy a first-class metric in AI applications. It measures the joules and carbon behind every inference, then optimizes, caches, and routes to use less — without giving up answer quality.">
+<meta name="theme-color" content="#0b110f">
+<link rel="icon" href="site/assets/joule-mark.svg" type="image/svg+xml">
+<link rel="canonical" href="https://wuisabel-gif.github.io/Joule/">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Joule — energy-aware optimization for LLM inference">
+<meta property="og:description" content="Measure the joules, CO₂, and cost of every LLM request — then optimize and route to greener models. An OpenAI-compatible proxy in Rust.">
+<meta property="og:url" content="https://wuisabel-gif.github.io/Joule/">
+<meta property="og:image" content="https://wuisabel-gif.github.io/Joule/site/assets/joule-og.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Joule — energy-aware optimization for LLM inference">
+<meta name="twitter:description" content="Measure the joules, CO₂, and cost of every LLM request — then optimize and route to greener models.">
+<meta name="twitter:image" content="https://wuisabel-gif.github.io/Joule/site/assets/joule-og.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    /* ---- canvas + surfaces ---- */
+    --bg:#0b110f;
+    --bg-2:#0e1512;
+    --surface:#111a16;
+    --surface-2:#15201b;
+    --line:rgba(234,242,236,0.10);
+    --line-strong:rgba(234,242,236,0.18);
+
+    /* ---- ink ---- */
+    --ink:#eaf2ec;
+    --ink-2:#a9b8af;
+    --ink-3:#8a9a90;
+
+    /* ---- energy gradient: spent -> saved ---- */
+    --amber:#ffb454;
+    --amber-dim:#c98a3c;
+    --signal:#54e8a6;
+    --signal-dim:#39b27c;
+
+    /* ---- type ---- */
+    --display:"Space Grotesk",system-ui,sans-serif;
+    --body:"Inter",system-ui,sans-serif;
+    --mono:"JetBrains Mono",ui-monospace,monospace;
+
+    /* ---- spacing scale (8px grid) ---- */
+    --s-2xs:2px; --s-xs:4px; --s-sm:8px; --s-md:16px; --s-lg:24px;
+    --s-xl:32px; --s-2xl:48px; --s-3xl:64px; --s-4xl:96px;
+
+    /* ---- radii ---- */
+    --r-chip:6px; --r-btn:8px; --r-panel:10px;
+
+    /* ---- z-index scale ---- */
+    --z-canvas:0; --z-base:1; --z-sticky:50; --z-overlay:100;
+
+    --ease:cubic-bezier(.16,1,.3,1);
+    --ease-out:cubic-bezier(.22,.61,.36,1);
+  }
+
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--ink);
+    font-family:var(--body);
+    font-size:clamp(1rem,0.97rem + 0.15vw,1.0625rem);
+    line-height:1.65;
+    -webkit-font-smoothing:antialiased;
+    text-rendering:optimizeLegibility;
+    overflow-x:hidden;
+  }
+  ::selection{background:rgba(84,232,166,0.26);color:#fff}
+
+  a{color:inherit;text-decoration:none}
+
+  .skip{
+    position:absolute;left:var(--s-md);top:-60px;z-index:var(--z-overlay);
+    background:var(--signal);color:#04130c;padding:10px 16px;border-radius:var(--r-btn);
+    font:600 0.9rem/1 var(--mono);transition:top .2s var(--ease);
+  }
+  .skip:focus{top:var(--s-md)}
+
+  :focus-visible{outline:2px solid var(--signal);outline-offset:3px;border-radius:3px}
+
+  .wrap{width:min(1140px,100% - 2*var(--s-lg));margin-inline:auto}
+
+  /* ---------- eyebrow / readout motif ---------- */
+  .eyebrow{
+    font:500 0.72rem/1 var(--mono);
+    letter-spacing:0.22em;text-transform:uppercase;
+    color:var(--signal);
+    display:inline-flex;align-items:center;gap:10px;
+  }
+  .eyebrow::before{
+    content:"";width:22px;height:1px;background:linear-gradient(90deg,var(--signal),transparent);
+  }
+  .eyebrow--amber{color:var(--amber)}
+  .eyebrow--amber::before{background:linear-gradient(90deg,var(--amber),transparent)}
+  .eyebrow--muted{color:var(--ink-3)}
+  .eyebrow--muted::before{background:linear-gradient(90deg,var(--ink-3),transparent)}
+
+  /* ---------- nav ---------- */
+  header.nav{
+    position:sticky;top:0;z-index:var(--z-sticky);
+    background:color-mix(in srgb,var(--bg) 72%,transparent);
+    backdrop-filter:blur(14px) saturate(1.2);
+    -webkit-backdrop-filter:blur(14px) saturate(1.2);
+    border-bottom:1px solid var(--line);
+  }
+  .nav-inner{display:flex;align-items:center;gap:var(--s-lg);height:64px}
+  .brand{display:flex;align-items:center;gap:10px;font:700 1.15rem/1 var(--display);letter-spacing:-0.01em}
+  .brand svg{display:block;flex:none}
+  .nav-links{display:flex;gap:var(--s-xl);margin-left:auto;align-items:center}
+  .nav-links a{font:500 0.82rem/1 var(--mono);letter-spacing:0.04em;color:var(--ink-2);transition:color .18s var(--ease)}
+  .nav-links a:hover{color:var(--ink)}
+  .meter{
+    display:flex;align-items:baseline;gap:7px;
+    font:500 0.72rem/1 var(--mono);color:var(--ink-3);
+    padding-left:var(--s-lg);border-left:1px solid var(--line);
+  }
+  .meter b{color:var(--signal);font-weight:600;font-variant-numeric:tabular-nums}
+  .nav-cta{
+    font:600 0.8rem/1 var(--mono);color:var(--bg);background:var(--signal);
+    padding:10px 16px;border-radius:var(--r-btn);transition:transform .18s var(--ease),box-shadow .18s var(--ease);
+  }
+  .nav-cta:hover{transform:translateY(-1px);box-shadow:0 6px 22px -8px var(--signal)}
+  .nav-toggle{display:none}
+
+  /* ---------- hero ---------- */
+  .hero{position:relative;min-height:clamp(640px,94vh,940px);display:flex;align-items:center;overflow:hidden}
+  #field{
+    position:absolute;inset:0;width:100%;height:100%;
+    z-index:var(--z-canvas);display:block;
+  }
+  .hero-veil{
+    position:absolute;inset:0;z-index:var(--z-canvas);pointer-events:none;
+    background:
+      radial-gradient(125% 95% at 76% 32%,transparent 0%,transparent 45%,var(--bg) 88%),
+      linear-gradient(180deg,rgba(11,17,15,0.55) 0%,transparent 22%,transparent 60%,var(--bg) 100%);
+  }
+  .hero-inner{position:relative;z-index:var(--z-base);padding-block:var(--s-4xl)}
+  .hero h1{
+    font-family:var(--display);font-weight:700;
+    font-size:clamp(2.6rem,2rem + 4.4vw,5rem);
+    line-height:1.02;letter-spacing:-0.03em;margin:var(--s-lg) 0 0;
+    max-width:16ch;text-wrap:balance;
+  }
+  .hero h1 .glow{ color:var(--signal); }
+  .hero p.lede{
+    margin:var(--s-lg) 0 0;max-width:54ch;color:var(--ink-2);
+    font-size:clamp(1.05rem,1rem + 0.4vw,1.25rem);line-height:1.6;text-wrap:pretty;
+  }
+  .hero-actions{display:flex;flex-wrap:wrap;gap:var(--s-md);margin-top:var(--s-2xl)}
+  .btn{
+    font:600 0.92rem/1 var(--mono);letter-spacing:0.01em;
+    padding:15px 24px;border-radius:var(--r-btn);cursor:pointer;border:1px solid transparent;
+    display:inline-flex;align-items:center;gap:10px;transition:transform .18s var(--ease),box-shadow .2s var(--ease),background .2s var(--ease),border-color .2s var(--ease);
+  }
+  .btn-primary{background:var(--signal);color:#04130c}
+  .btn-primary:hover{transform:translateY(-2px);box-shadow:0 12px 36px -12px var(--signal)}
+  .btn-ghost{background:rgba(234,242,236,0.03);color:var(--ink);border-color:var(--line-strong)}
+  .btn-ghost:hover{border-color:var(--signal);color:#fff;background:rgba(84,232,166,0.06)}
+  .btn .arr{transition:transform .2s var(--ease)}
+  .btn:hover .arr{transform:translateX(3px)}
+
+  /* hero readout panel */
+  .readout{
+    margin-top:var(--s-2xl);max-width:560px;
+    border:1px solid var(--line-strong);border-radius:var(--r-panel);
+    background:linear-gradient(180deg,rgba(21,32,27,0.86),rgba(14,21,18,0.86));
+    backdrop-filter:blur(8px);box-shadow:0 24px 60px -30px rgba(0,0,0,0.8);overflow:hidden;
+  }
+  .readout-top{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:11px var(--s-md);border-bottom:1px solid var(--line);
+    font:500 0.7rem/1 var(--mono);letter-spacing:0.16em;text-transform:uppercase;color:var(--ink-3);
+  }
+  .dots{display:flex;gap:6px}
+  .dots i{width:8px;height:8px;border-radius:50%;background:var(--line-strong);display:block}
+  .dots i:first-child{background:var(--amber)}
+  .dots i:nth-child(2){background:var(--signal-dim)}
+  .readout-body{display:grid;grid-template-columns:1fr 1fr auto;gap:0;}
+  .ro-cell{padding:var(--s-md) var(--s-md) var(--s-lg)}
+  .ro-cell + .ro-cell{border-left:1px solid var(--line)}
+  .ro-k{font:500 0.66rem/1 var(--mono);letter-spacing:0.14em;text-transform:uppercase;color:var(--ink-3)}
+  .ro-v{font-family:var(--mono);font-weight:600;font-size:1.7rem;margin-top:10px;font-variant-numeric:tabular-nums;line-height:1}
+  .ro-unit{font-size:0.8rem;color:var(--ink-3);font-weight:500;margin-left:4px}
+  .ro-v.spent{color:var(--amber)}
+  .ro-v.saved{color:var(--signal)}
+  .ro-delta{display:flex;flex-direction:column;justify-content:center;align-items:flex-end;padding-right:var(--s-lg);min-width:104px}
+  .ro-delta b{font-family:var(--mono);font-weight:600;font-size:1.9rem;color:var(--signal);line-height:1;font-variant-numeric:tabular-nums}
+  .ro-delta span{font:500 0.62rem/1 var(--mono);letter-spacing:0.16em;text-transform:uppercase;color:var(--ink-3);margin-top:8px}
+
+  /* ---------- generic section rhythm ---------- */
+  section{position:relative;z-index:var(--z-base)}
+  .band{padding-block:clamp(var(--s-3xl),9vw,140px)}
+  .band--tight{padding-block:clamp(var(--s-2xl),6vw,84px)}
+  .sec-head{max-width:64ch}
+  .sec-head h2{
+    font-family:var(--display);font-weight:600;
+    font-size:clamp(1.9rem,1.5rem + 1.8vw,3rem);line-height:1.06;letter-spacing:-0.025em;
+    margin:var(--s-md) 0 0;text-wrap:balance;
+  }
+  .sec-head p{margin:var(--s-md) 0 0;color:var(--ink-2);max-width:60ch;text-wrap:pretty}
+
+  .rule{height:1px;background:var(--line);border:0;margin:0}
+
+  /* ---------- premise stats ---------- */
+  .premise{
+    border-block:1px solid var(--line);
+    background:
+      radial-gradient(80% 140% at 0% 0%,rgba(255,180,84,0.05),transparent 60%),
+      radial-gradient(80% 140% at 100% 100%,rgba(84,232,166,0.05),transparent 60%);
+  }
+  .premise-grid{display:grid;grid-template-columns:1.3fr 1fr 1fr 1fr;gap:0;align-items:stretch}
+  .premise-lead{padding-right:var(--s-2xl)}
+  .premise-lead p{font-family:var(--display);font-weight:500;font-size:clamp(1.3rem,1.1rem + 1vw,1.85rem);line-height:1.22;letter-spacing:-0.015em;margin:var(--s-md) 0 0;color:var(--ink)}
+  .stat{padding:var(--s-sm) 0 var(--s-sm) var(--s-xl);border-left:1px solid var(--line);display:flex;flex-direction:column;justify-content:center}
+  .stat .n{font-family:var(--mono);font-weight:600;font-size:clamp(1.8rem,1.4rem + 1.6vw,2.6rem);font-variant-numeric:tabular-nums;line-height:1}
+  .stat .n.amber{color:var(--amber)} .stat .n.green{color:var(--signal)}
+  .stat .l{font:500 0.72rem/1.4 var(--mono);letter-spacing:0.04em;color:var(--ink-3);margin-top:12px;max-width:22ch}
+
+  /* ---------- principles ---------- */
+  .principles{display:grid;gap:0;margin-top:var(--s-2xl);border-top:1px solid var(--line)}
+  .principle{
+    display:grid;grid-template-columns:88px 1fr;gap:var(--s-xl);
+    padding:var(--s-xl) 0;border-bottom:1px solid var(--line);align-items:start;
+    transition:background .25s var(--ease);
+  }
+  .principle:hover{background:rgba(234,242,236,0.015)}
+  .principle .idx{font:500 0.8rem/1 var(--mono);color:var(--signal);padding-top:6px;letter-spacing:0.05em}
+  .principle h3{font-family:var(--display);font-weight:600;font-size:1.35rem;letter-spacing:-0.015em;margin:0}
+  .principle p{margin:10px 0 0;color:var(--ink-2);max-width:62ch}
+  .principle .demo{
+    margin-top:var(--s-md);font:500 0.78rem/1.7 var(--mono);color:var(--ink-3);
+    padding:12px 14px;border:1px solid var(--line);border-radius:var(--r-chip);background:var(--bg-2);
+    display:inline-block;max-width:100%;overflow-x:auto;white-space:nowrap;
+  }
+  .principle .demo .ok{color:var(--signal)}
+  .principle .demo .hot{color:var(--amber)}
+
+  /* ---------- architecture ---------- */
+  .arch-flow{display:flex;flex-direction:column;align-items:stretch;max-width:780px;margin:var(--s-2xl) auto 0}
+  .node{
+    border:1px solid var(--line-strong);border-radius:var(--r-panel);padding:var(--s-lg);
+    background:var(--surface);text-align:center;max-width:320px;width:100%;margin-inline:auto;
+  }
+  .conn-v{height:46px;position:relative}
+  .conn-v::before{content:"";position:absolute;left:50%;top:2px;bottom:10px;width:1px;transform:translateX(-.5px);background:linear-gradient(var(--line-strong),var(--signal-dim))}
+  .conn-v::after{content:"";position:absolute;left:50%;bottom:6px;width:6px;height:6px;border-right:1px solid var(--signal);border-bottom:1px solid var(--signal);transform:translate(-50%,0) rotate(45deg)}
+  .node .cap{font:500 0.68rem/1 var(--mono);letter-spacing:0.16em;text-transform:uppercase;color:var(--ink-3)}
+  .node .name{font-family:var(--display);font-weight:600;font-size:1.1rem;margin-top:10px}
+  .node.io .name{color:var(--ink)}
+  .core{
+    border:1px solid var(--line-strong);border-radius:var(--r-panel);overflow:hidden;
+    background:
+      linear-gradient(180deg,var(--surface-2),var(--surface));
+    box-shadow:0 0 0 1px rgba(84,232,166,0.04),0 30px 80px -50px var(--signal);
+    position:relative;
+  }
+  .core::before{content:"";position:absolute;inset:0;border-radius:var(--r-panel);padding:1px;
+    background:linear-gradient(135deg,rgba(255,180,84,0.35),transparent 40%,transparent 60%,rgba(84,232,166,0.35));
+    -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
+    -webkit-mask-composite:xor;mask-composite:exclude;pointer-events:none}
+  .core-top{display:flex;align-items:center;justify-content:space-between;padding:12px var(--s-md);border-bottom:1px solid var(--line)}
+  .core-top .t{font:700 0.92rem/1 var(--display);letter-spacing:0.01em}
+  .core-top .s{font:500 0.66rem/1 var(--mono);letter-spacing:0.14em;text-transform:uppercase;color:var(--signal)}
+  .mods{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--line)}
+  .mod{background:var(--surface);padding:var(--s-md);transition:background .2s var(--ease)}
+  .mod:hover{background:var(--surface-2)}
+  .mod .mh{display:flex;align-items:center;gap:9px}
+  .mod .mh i{width:6px;height:6px;border-radius:50%;background:var(--signal);box-shadow:0 0 8px var(--signal);flex:none}
+  .mod .mn{font:600 0.92rem/1 var(--mono)}
+  .mod .md{margin:8px 0 0;font-size:0.84rem;line-height:1.5;color:var(--ink-2)}
+
+  .nongoal{margin-top:var(--s-xl);font-size:0.92rem;color:var(--ink-3);max-width:70ch}
+  .nongoal b{color:var(--ink-2);font-weight:600}
+
+  /* ---------- optimization console ---------- */
+  .opt-grid{display:grid;grid-template-columns:1fr 1.05fr;gap:var(--s-2xl);align-items:center;margin-top:var(--s-2xl)}
+  .console{
+    border:1px solid var(--line-strong);border-radius:var(--r-panel);overflow:hidden;
+    background:#070d0b;box-shadow:0 30px 70px -40px rgba(0,0,0,0.9);
+    font-family:var(--mono);
+  }
+  .console-top{display:flex;align-items:center;gap:10px;padding:11px var(--s-md);border-bottom:1px solid var(--line);background:var(--bg-2)}
+  .console-top .dots i{width:9px;height:9px}
+  .console-top .path{font:500 0.72rem/1 var(--mono);color:var(--ink-3);margin-left:6px}
+  .console-body{padding:var(--s-lg) var(--s-md);font-size:0.86rem;line-height:1.9}
+  .console-body .title{color:var(--ink);font-weight:600;letter-spacing:0.02em}
+  .line{display:flex;gap:10px;opacity:0;transform:translateY(4px)}
+  .line.in{opacity:1;transform:none;transition:opacity .4s var(--ease),transform .4s var(--ease)}
+  .line .tick{color:var(--signal)}
+  .line span{color:var(--ink-2)}
+  .console-foot{margin-top:var(--s-md);padding-top:var(--s-md);border-top:1px dashed var(--line)}
+  .console-foot .big{color:var(--signal);font-weight:600;font-size:1.05rem}
+  .console-foot .big b{font-size:1.5rem;font-variant-numeric:tabular-nums}
+  .opt-copy h3{font-family:var(--display);font-weight:600;font-size:clamp(1.5rem,1.2rem + 1.3vw,2.1rem);letter-spacing:-0.02em;margin:var(--s-md) 0 0;line-height:1.1}
+  .opt-copy p{color:var(--ink-2);margin:var(--s-md) 0 0;max-width:50ch;text-wrap:pretty}
+  .opt-copy .note{font:500 0.78rem/1.6 var(--mono);color:var(--ink-3);margin-top:var(--s-md)}
+
+  /* ---------- roadmap ---------- */
+  .road{margin-top:var(--s-2xl);display:grid;gap:0}
+  .phase{display:grid;grid-template-columns:230px 1fr;gap:var(--s-2xl);padding:var(--s-xl) 0;border-top:1px solid var(--line)}
+  .phase:last-child{border-bottom:1px solid var(--line)}
+  .phase-h .pn{font:500 0.72rem/1 var(--mono);letter-spacing:0.16em;text-transform:uppercase;color:var(--ink-3)}
+  .phase-h h3{font-family:var(--display);font-weight:600;font-size:1.4rem;letter-spacing:-0.015em;margin:10px 0 0}
+  .phase-bar{height:3px;border-radius:2px;margin-top:var(--s-md);background:var(--line);overflow:hidden;max-width:170px}
+  .phase-bar i{display:block;height:100%;background:linear-gradient(90deg,var(--amber),var(--signal))}
+  .tasks{display:flex;flex-direction:column;gap:10px;padding-top:4px}
+  .task{display:flex;align-items:flex-start;gap:12px;font-family:var(--mono);font-size:0.9rem;color:var(--ink-2)}
+  .task .st{flex:none;width:20px;height:20px;border-radius:5px;display:grid;place-items:center;font-size:0.7rem;font-weight:600;margin-top:1px;border:1px solid var(--line-strong)}
+  .task[data-s="done"] .st{background:rgba(84,232,166,0.14);color:var(--signal);border-color:rgba(84,232,166,0.3)}
+  .task[data-s="partial"] .st{background:rgba(255,180,84,0.14);color:var(--amber);border-color:rgba(255,180,84,0.3)}
+  .task[data-s="planned"] .st{color:var(--ink-3)}
+  .task[data-s="done"] .tx{color:var(--ink)}
+  .task .tag{margin-left:auto;font-size:0.66rem;letter-spacing:0.12em;text-transform:uppercase;color:var(--ink-3);align-self:center}
+
+  /* ---------- philosophy ---------- */
+  .philo{
+    border-block:1px solid var(--line);
+    background:radial-gradient(90% 120% at 50% 0%,rgba(84,232,166,0.06),transparent 60%);
+    text-align:center;
+  }
+  .philo .big{
+    font-family:var(--display);font-weight:600;
+    font-size:clamp(1.8rem,1.3rem + 2.6vw,3.4rem);line-height:1.1;letter-spacing:-0.025em;
+    max-width:18ch;margin-inline:auto;text-wrap:balance;
+  }
+  .philo .big em{font-style:normal;color:var(--signal)}
+  .triad{display:grid;grid-template-columns:repeat(3,1fr);gap:var(--s-xl);margin-top:var(--s-2xl);max-width:820px;margin-inline:auto;text-align:left}
+  .triad div{border-top:1px solid var(--line-strong);padding-top:var(--s-md)}
+  .triad .a{font:600 0.72rem/1 var(--mono);letter-spacing:0.12em;text-transform:uppercase;color:var(--amber)}
+  .triad .b{margin-top:10px;color:var(--ink-2);font-size:0.95rem}
+  .triad .b b{color:var(--signal);font-weight:600}
+
+  /* ---------- tech / footer ---------- */
+  .tech-row{display:flex;flex-wrap:wrap;gap:10px;margin-top:var(--s-xl)}
+  .chip{font:500 0.8rem/1 var(--mono);color:var(--ink-2);padding:9px 14px;border:1px solid var(--line);border-radius:var(--r-chip);background:var(--bg-2);transition:border-color .2s var(--ease),color .2s var(--ease)}
+  .chip:hover{border-color:var(--signal-dim);color:var(--ink)}
+  .binary{margin-top:var(--s-xl);font-family:var(--mono);font-size:0.9rem;color:var(--ink-3)}
+  .binary b{color:var(--signal)}
+
+  footer{border-top:1px solid var(--line);padding-block:var(--s-2xl) var(--s-3xl)}
+  .foot-grid{display:flex;flex-wrap:wrap;gap:var(--s-2xl);justify-content:space-between;align-items:flex-start}
+  .foot-brand{max-width:34ch}
+  .foot-brand p{color:var(--ink-3);font-size:0.88rem;margin:var(--s-md) 0 0;line-height:1.6}
+  .foot-cols{display:flex;gap:var(--s-3xl);flex-wrap:wrap}
+  .foot-col h4{font:500 0.68rem/1 var(--mono);letter-spacing:0.16em;text-transform:uppercase;color:var(--ink-3);margin:0 0 var(--s-md)}
+  .foot-col a{display:block;color:var(--ink-2);font-size:0.9rem;padding:5px 0;transition:color .18s var(--ease)}
+  .foot-col a:hover{color:var(--signal)}
+  .foot-note{margin-top:var(--s-2xl);padding-top:var(--s-lg);border-top:1px solid var(--line);display:flex;flex-wrap:wrap;gap:var(--s-md) var(--s-xl);justify-content:space-between;align-items:center}
+  .foot-note small{color:var(--ink-3);font:400 0.78rem/1.6 var(--mono)}
+  .saver{display:inline-flex;align-items:center;gap:9px;font:500 0.74rem/1.4 var(--mono);color:var(--ink-3)}
+  .saver .pulse{width:8px;height:8px;border-radius:50%;background:var(--signal);box-shadow:0 0 0 0 rgba(84,232,166,0.5);animation:pulse 2.6s var(--ease) infinite}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(84,232,166,0.4)}70%{box-shadow:0 0 0 9px rgba(84,232,166,0)}100%{box-shadow:0 0 0 0 rgba(84,232,166,0)}}
+
+  /* ---------- reveal ---------- */
+  .reveal{opacity:0;transform:translateY(18px)}
+  .reveal.show{opacity:1;transform:none;transition:opacity .7s var(--ease),transform .7s var(--ease)}
+
+  /* ---------- responsive ---------- */
+  @media (max-width:920px){
+    .premise-grid{grid-template-columns:1fr 1fr}
+    .premise-lead{grid-column:1 / -1;padding-right:0;padding-bottom:var(--s-lg);border-bottom:1px solid var(--line);margin-bottom:var(--s-lg)}
+    .stat{padding-left:0;border-left:0;padding-bottom:var(--s-lg)}
+    .stat:nth-child(2),.stat:nth-child(3){border-left:0}
+    .opt-grid{grid-template-columns:1fr}
+    .mods{grid-template-columns:1fr}
+  }
+  @media (max-width:720px){
+    .nav-links{
+      position:fixed;inset:64px 0 auto 0;flex-direction:column;gap:0;
+      background:var(--bg-2);border-bottom:1px solid var(--line);
+      padding:var(--s-sm) var(--s-lg) var(--s-lg);align-items:stretch;
+      transform:translateY(-130%);transition:transform .34s var(--ease);z-index:var(--z-sticky);
+    }
+    .nav-links.open{transform:none}
+    .nav-links a{padding:14px 0;border-bottom:1px solid var(--line);font-size:0.95rem}
+    .meter{display:none}
+    .nav-cta{align-self:flex-start;margin-top:var(--s-sm)}
+    .nav-toggle{display:inline-grid;place-items:center;width:42px;height:42px;margin-left:auto;background:transparent;border:1px solid var(--line-strong);border-radius:var(--r-btn);cursor:pointer}
+    .nav-toggle span,.nav-toggle span::before,.nav-toggle span::after{content:"";display:block;width:18px;height:1.6px;background:var(--ink);transition:.25s var(--ease)}
+    .nav-toggle span::before{transform:translateY(-6px)}
+    .nav-toggle span::after{transform:translateY(4.4px)}
+    .nav-toggle[aria-expanded="true"] span{background:transparent}
+    .nav-toggle[aria-expanded="true"] span::before{transform:rotate(45deg)}
+    .nav-toggle[aria-expanded="true"] span::after{transform:rotate(-45deg) translateY(-1.5px)}
+    .premise-grid{grid-template-columns:1fr}
+    .stat{border-top:1px solid var(--line);padding-top:var(--s-lg)}
+    .principle{grid-template-columns:1fr;gap:var(--s-sm)}
+    .principle .idx{padding-top:0}
+    .phase{grid-template-columns:1fr;gap:var(--s-md)}
+    .triad{grid-template-columns:1fr;gap:var(--s-lg)}
+    .readout-body{grid-template-columns:1fr 1fr}
+    .ro-delta{grid-column:1 / -1;align-items:flex-start;border-top:1px solid var(--line);padding:var(--s-md)}
+  }
+
+  @media (prefers-reduced-motion:reduce){
+    *{animation-duration:0.001ms !important;animation-iteration-count:1 !important;transition-duration:0.001ms !important}
+    .reveal{opacity:1;transform:none}
+    .line{opacity:1;transform:none}
+  }
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="nav">
+  <div class="wrap nav-inner">
+    <a class="brand" href="#top" aria-label="Joule home">
+      <svg width="26" height="26" viewBox="0 0 26 26" fill="none" aria-hidden="true">
+        <rect x="0.6" y="0.6" width="24.8" height="24.8" rx="6" stroke="rgba(234,242,236,0.18)"/>
+        <path d="M14.5 4.5 L7.5 14 L12 14 L11 21.5 L18.5 11.5 L13.6 11.5 Z" fill="url(#bolt)"/>
+        <defs>
+          <linearGradient id="bolt" x1="7" y1="4.5" x2="18.5" y2="21.5" gradientUnits="userSpaceOnUse">
+            <stop stop-color="#ffb454"/><stop offset="1" stop-color="#54e8a6"/>
+          </linearGradient>
+        </defs>
+      </svg>
+      Joule
+    </a>
+    <nav class="nav-links" id="navlinks">
+      <a href="#vision">Vision</a>
+      <a href="#principles">Principles</a>
+      <a href="#architecture">Architecture</a>
+      <a href="#roadmap">Roadmap</a>
+      <div class="meter" aria-hidden="true"><span>this page</span> <b id="navmeter">0.0</b> J</div>
+      <a class="nav-cta" href="https://github.com/wuisabel-gif/Joule">GitHub ↗</a>
+    </nav>
+    <button class="nav-toggle" id="navtoggle" aria-label="Menu" aria-expanded="false" aria-controls="navlinks"><span></span></button>
+  </div>
+</header>
+
+<main id="main">
+
+  <!-- ===================== HERO ===================== -->
+  <section class="hero" id="top">
+    <canvas id="field" aria-hidden="true"></canvas>
+    <div class="hero-veil" aria-hidden="true"></div>
+    <div class="wrap hero-inner">
+      <span class="eyebrow">Energy-aware optimization for LLM inference</span>
+      <h1>How many <span class="glow">joules</span> did this response cost?</h1>
+      <p class="lede">Joule is middleware that makes energy a first-class metric in AI applications. It measures the energy and carbon behind every inference, then optimizes, caches, and routes requests to use less electricity — without trading away answer quality.</p>
+      <div class="hero-actions">
+        <a class="btn btn-primary" href="https://github.com/wuisabel-gif/Joule">Get it on GitHub <span class="arr">→</span></a>
+        <a class="btn btn-ghost" href="#architecture">See the pipeline</a>
+      </div>
+
+      <div class="readout" role="img" aria-label="Example: a request estimated at 1820 joules, reduced to 1074 joules — a 41 percent reduction.">
+        <div class="readout-top"><span>Inference&nbsp;·&nbsp;estimated energy</span><div class="dots" aria-hidden="true"><i></i><i></i><i></i></div></div>
+        <div class="readout-body">
+          <div class="ro-cell">
+            <div class="ro-k">Baseline</div>
+            <div class="ro-v spent"><span id="ro-base">0</span><span class="ro-unit">J</span></div>
+          </div>
+          <div class="ro-cell">
+            <div class="ro-k">Optimized</div>
+            <div class="ro-v saved"><span id="ro-opt">0</span><span class="ro-unit">J</span></div>
+          </div>
+          <div class="ro-delta">
+            <b id="ro-delta">0%</b><span>reduction</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== PREMISE ===================== -->
+  <section class="premise band--tight" id="vision">
+    <div class="wrap premise-grid reveal">
+      <div class="premise-lead">
+        <span class="eyebrow eyebrow--amber">The premise</span>
+        <p>Every request sips a little electricity. Across billions a day, that adds up to real power, cooling, and carbon.</p>
+      </div>
+      <div class="stat">
+        <div class="n amber">10⁹+</div>
+        <div class="l">inference requests generated every day across AI applications</div>
+      </div>
+      <div class="stat">
+        <div class="n green">1 J</div>
+        <div class="l">the unit Joule exposes on every response, alongside Wh, CO₂, and cost</div>
+      </div>
+      <div class="stat">
+        <div class="n">≈0</div>
+        <div class="l">quality lost — optimizations stay measurable and reversible</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== PRINCIPLES ===================== -->
+  <section class="band" id="principles">
+    <div class="wrap">
+      <div class="sec-head reveal">
+        <span class="eyebrow">Design principles</span>
+        <h2>Four rules the optimizer never breaks.</h2>
+        <p>Joule sits between your application and any provider. These constraints keep it honest about what it changes and why.</p>
+      </div>
+
+      <div class="principles">
+        <div class="principle reveal">
+          <div class="idx">01</div>
+          <div>
+            <h3>Measure before optimizing</h3>
+            <p>Energy should be observable. Every inference exposes latency, input and output tokens, estimated energy in joules, electricity in Wh, CO₂, and cost — before a single optimization runs.</p>
+            <div class="demo"><span class="hot">⊳ measured</span> &nbsp;1,820 J&nbsp;·&nbsp;0.51 Wh&nbsp;·&nbsp;0.23 g CO₂&nbsp;·&nbsp;$0.0034</div>
+          </div>
+        </div>
+        <div class="principle reveal">
+          <div class="idx">02</div>
+          <div>
+            <h3>Quality first</h3>
+            <p>Reducing energy must never meaningfully reduce answer quality. Every pass is measurable and reversible, so you can see exactly what an optimization traded — and undo it.</p>
+          </div>
+        </div>
+        <div class="principle reveal">
+          <div class="idx">03</div>
+          <div>
+            <h3>Model agnostic</h3>
+            <p>The pipeline stays independent of the model vendor. Point it at OpenAI, Anthropic, Gemini, Ollama, LM Studio, vLLM, or llama.cpp — the optimization logic doesn't change.</p>
+            <div class="demo"><span class="ok">openai</span> · <span class="ok">anthropic</span> · <span class="ok">gemini</span> · <span class="ok">ollama</span> · <span class="ok">vllm</span> · <span class="ok">llama.cpp</span></div>
+          </div>
+        </div>
+        <div class="principle reveal">
+          <div class="idx">04</div>
+          <div>
+            <h3>Transparent</h3>
+            <p>Nothing happens invisibly. Joule explains every optimization it applies and reports the estimated energy it saved, per request — in headers and in a human-readable summary.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== ARCHITECTURE ===================== -->
+  <section class="band" id="architecture" style="background:var(--bg-2);border-block:1px solid var(--line)">
+    <div class="wrap">
+      <div class="sec-head reveal">
+        <span class="eyebrow">Architecture</span>
+        <h2>One hop between your app and the provider.</h2>
+        <p>Applications keep using familiar APIs. Joule transparently measures, optimizes, caches, and routes every request that passes through.</p>
+      </div>
+
+      <div class="arch-flow reveal">
+        <div class="node io">
+          <div class="cap">Source</div>
+          <div class="name">Application</div>
+        </div>
+
+        <div class="conn-v" aria-hidden="true"></div>
+
+        <div class="core">
+          <div class="core-top"><span class="t">Joule</span><span class="s">OpenAI-compatible proxy</span></div>
+          <div class="mods">
+            <div class="mod"><div class="mh"><i></i><span class="mn">Proxy</span></div><p class="md">Receives requests from applications — OpenAI-compatible first.</p></div>
+            <div class="mod"><div class="mh"><i></i><span class="mn">Optimizer</span></div><p class="md">Removes duplicated context, compresses prompts, trims verbosity, recommends output limits.</p></div>
+            <div class="mod"><div class="mh"><i></i><span class="mn">Cache</span></div><p class="md">Avoids repeated inference with exact, semantic, and embedding caches.</p></div>
+            <div class="mod"><div class="mh"><i></i><span class="mn">Router</span></div><p class="md">Selects a model by quality, latency, cost, and estimated energy.</p></div>
+            <div class="mod"><div class="mh"><i></i><span class="mn">Estimator</span></div><p class="md">Estimates energy from model, hardware, token count, and published benchmarks.</p></div>
+            <div class="mod"><div class="mh"><i></i><span class="mn">Metrics</span></div><p class="md">Exports joules, CO₂, cost, and savings to Prometheus, with a SQLite request log — OpenTelemetry traces next.</p></div>
+          </div>
+        </div>
+
+        <div class="conn-v" aria-hidden="true"></div>
+
+        <div class="node io">
+          <div class="cap">Destination</div>
+          <div class="name">LLM Provider</div>
+        </div>
+      </div>
+
+      <p class="nongoal reveal"><b>What Joule is not:</b> a foundation model, an LLM framework, a prompt-engineering assistant, a model-serving engine, or a benchmark suite. It is infrastructure that makes the AI systems you already run more efficient.</p>
+    </div>
+  </section>
+
+  <!-- ===================== OPTIMIZATION CONSOLE ===================== -->
+  <section class="band">
+    <div class="wrap">
+      <div class="opt-grid">
+        <div class="console reveal" id="console" aria-label="Optimization summary for one request">
+          <div class="console-top">
+            <div class="dots" aria-hidden="true"><i></i><i></i><i></i></div>
+            <span class="path">joule · optimization summary</span>
+          </div>
+          <div class="console-body">
+            <div class="title">Optimization Summary <span style="color:var(--ink-3);font-weight:400">(full)</span></div>
+            <div style="height:10px"></div>
+            <div class="line"><span class="tick">✓</span><span>Normalized whitespace</span></div>
+            <div class="line"><span class="tick">✓</span><span>Collapsed repeated lines</span></div>
+            <div class="line"><span class="tick">✓</span><span>Removed filler phrases</span></div>
+            <div class="console-foot line">
+              <span class="big">49 → 23 tokens · <b>15.6 J</b> saved</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="opt-copy reveal">
+          <span class="eyebrow">Optimization, explained</span>
+          <h3>You see every joule it saves, and how.</h3>
+          <p>Each request comes back with the passes Joule applied and the energy it estimates they saved — attached as response headers and a readable summary. Composable, intensity-gated, reversible.</p>
+          <p class="note">// real output from `joule optimize --level full` on gpt-4o — energy is an estimate</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== ROADMAP ===================== -->
+  <section class="band" id="roadmap" style="background:var(--bg-2);border-block:1px solid var(--line)">
+    <div class="wrap">
+      <div class="sec-head reveal">
+        <span class="eyebrow">Roadmap</span>
+        <h2>Measure → optimize → route → decarbonize.</h2>
+        <p>Phase 1 ships today. Each phase builds on a working previous one — energy first, carbon last.</p>
+      </div>
+
+      <div class="road">
+        <div class="phase reveal">
+          <div class="phase-h">
+            <div class="pn">Phase 1</div>
+            <h3>Measure</h3>
+            <div class="phase-bar"><i style="width:100%"></i></div>
+          </div>
+          <div class="tasks">
+            <div class="task" data-s="done"><span class="st">✓</span><span class="tx">OpenAI-compatible proxy</span><span class="tag">shipped</span></div>
+            <div class="task" data-s="done"><span class="st">✓</span><span class="tx">Request metrics via Prometheus</span><span class="tag">shipped</span></div>
+            <div class="task" data-s="done"><span class="st">✓</span><span class="tx">Token accounting with heuristic fallback</span><span class="tag">shipped</span></div>
+            <div class="task" data-s="done"><span class="st">✓</span><span class="tx">Energy estimation, calibrated per-model</span><span class="tag">shipped</span></div>
+            <div class="task" data-s="done"><span class="st">✓</span><span class="tx">CLI: serve · estimate · optimize · models</span><span class="tag">shipped</span></div>
+          </div>
+        </div>
+
+        <div class="phase reveal">
+          <div class="phase-h">
+            <div class="pn">Phase 2</div>
+            <h3>Optimize &amp; cache</h3>
+            <div class="phase-bar"><i style="width:66%"></i></div>
+          </div>
+          <div class="tasks">
+            <div class="task" data-s="done"><span class="st">✓</span><span class="tx">Composable, explainable prompt passes</span><span class="tag">shipped</span></div>
+            <div class="task" data-s="done"><span class="st">✓</span><span class="tx">Per-request optimization reports</span><span class="tag">shipped</span></div>
+            <div class="task" data-s="planned"><span class="st">○</span><span class="tx">Semantic cache — exact · embedding · semantic</span><span class="tag">planned</span></div>
+          </div>
+        </div>
+
+        <div class="phase reveal">
+          <div class="phase-h">
+            <div class="pn">Phase 3</div>
+            <h3>Route</h3>
+            <div class="phase-bar"><i style="width:50%"></i></div>
+          </div>
+          <div class="tasks">
+            <div class="task" data-s="done"><span class="st">✓</span><span class="tx">Model routing — static · model · greenest</span><span class="tag">shipped</span></div>
+            <div class="task" data-s="partial"><span class="st">◐</span><span class="tx">Multi-provider comparison registry</span><span class="tag">in progress</span></div>
+            <div class="task" data-s="planned"><span class="st">○</span><span class="tx">Dashboard</span><span class="tag">planned</span></div>
+          </div>
+        </div>
+
+        <div class="phase reveal">
+          <div class="phase-h">
+            <div class="pn">Phase 4</div>
+            <h3>Carbon-aware</h3>
+            <div class="phase-bar"><i style="width:6%"></i></div>
+          </div>
+          <div class="tasks">
+            <div class="task" data-s="planned"><span class="st">○</span><span class="tx">Carbon-aware scheduling</span><span class="tag">planned</span></div>
+            <div class="task" data-s="planned"><span class="st">○</span><span class="tx">Electricity grid integration</span><span class="tag">planned</span></div>
+            <div class="task" data-s="planned"><span class="st">○</span><span class="tx">Automatic optimization recommendations</span><span class="tag">planned</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== PHILOSOPHY ===================== -->
+  <section class="philo band">
+    <div class="wrap reveal">
+      <span class="eyebrow eyebrow--muted" style="justify-content:center">Philosophy</span>
+      <p class="big" style="margin-top:var(--s-lg)">Build AI that is not only intelligent, but <em>efficient</em>.</p>
+      <div class="triad">
+        <div><div class="a">Cheapest ≠ greenest</div><div class="b">The lowest bill isn't the lowest <b>carbon</b>.</div></div>
+        <div><div class="a">Fastest ≠ efficient</div><div class="b">The quickest reply isn't the leanest on <b>energy</b>.</div></div>
+        <div><div class="a">Largest ≠ required</div><div class="b">The biggest model isn't always the one you <b>need</b>.</div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== TECH / START ===================== -->
+  <section class="band--tight band" id="start-section">
+    <div class="wrap reveal">
+      <span class="eyebrow">Built in Rust</span>
+      <h2 class="sec-head" style="font-family:var(--display);font-weight:600;font-size:clamp(1.6rem,1.3rem + 1.4vw,2.4rem);letter-spacing:-0.02em;margin-top:var(--s-md)">Compiles to a single portable binary.</h2>
+      <div class="tech-row">
+        <span class="chip">Rust</span><span class="chip">Tokio</span><span class="chip">Axum</span>
+        <span class="chip">Serde</span><span class="chip">SQLite</span><span class="chip">OpenTelemetry</span><span class="chip">Prometheus</span>
+      </div>
+      <div class="binary">$ <b>joule</b> serve --upstream https://api.openai.com &nbsp;<span style="color:var(--ink-3)"># drop-in, OpenAI-compatible</span></div>
+    </div>
+  </section>
+
+  <!-- ===================== FOOTER ===================== -->
+  <footer>
+    <div class="wrap">
+      <div class="foot-grid">
+        <div class="foot-brand">
+          <a class="brand" href="#top" aria-label="Joule home" style="font-size:1.05rem">
+            <svg width="22" height="22" viewBox="0 0 26 26" fill="none" aria-hidden="true">
+              <rect x="0.6" y="0.6" width="24.8" height="24.8" rx="6" stroke="rgba(234,242,236,0.18)"/>
+              <path d="M14.5 4.5 L7.5 14 L12 14 L11 21.5 L18.5 11.5 L13.6 11.5 Z" fill="url(#bolt2)"/>
+              <defs><linearGradient id="bolt2" x1="7" y1="4.5" x2="18.5" y2="21.5" gradientUnits="userSpaceOnUse"><stop stop-color="#ffb454"/><stop offset="1" stop-color="#54e8a6"/></linearGradient></defs>
+            </svg> Joule
+          </a>
+          <p>Energy-aware optimization for LLM inference. Make energy optimization as commonplace as latency optimization.</p>
+        </div>
+        <div class="foot-cols">
+          <div class="foot-col">
+            <h4>Product</h4>
+            <a href="#vision">Vision</a><a href="#principles">Principles</a><a href="#architecture">Architecture</a><a href="#roadmap">Roadmap</a>
+          </div>
+          <div class="foot-col">
+            <h4>Develop</h4>
+            <a href="https://github.com/wuisabel-gif/Joule">GitHub</a><a href="https://github.com/wuisabel-gif/Joule/tree/main/src">Source</a><a href="https://github.com/wuisabel-gif/Joule#readme">Quickstart</a><a href="https://github.com/wuisabel-gif/Joule/blob/main/CHANGELOG.md">Changelog</a>
+          </div>
+          <div class="foot-col">
+            <h4>Reference</h4>
+            <a href="https://github.com/wuisabel-gif/Joule/blob/main/ROADMAP.md">Roadmap &amp; vision</a><a href="https://github.com/wuisabel-gif/Joule#grounding-in-measured-data">Calibration data</a><a href="https://github.com/wuisabel-gif/Joule/blob/main/LICENSE">License · Apache-2.0</a>
+          </div>
+        </div>
+      </div>
+      <div class="foot-note">
+        <small>© 2026 Joule contributors · Apache-2.0 · Energy figures are calibrated estimates, not meter readings.</small>
+        <span class="saver" title="Animation pauses when off-screen or in a background tab"><span class="pulse" aria-hidden="true"></span>This page pauses its animation when you look away — to save a few joules.</span>
+      </div>
+    </div>
+  </footer>
+
+</main>
+
+<script>
+(function(){
+  "use strict";
+  var reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  /* ---------- nav toggle ---------- */
+  var toggle = document.getElementById("navtoggle");
+  var links = document.getElementById("navlinks");
+  if(toggle){
+    toggle.addEventListener("click",function(){
+      var open = links.classList.toggle("open");
+      toggle.setAttribute("aria-expanded", open ? "true":"false");
+    });
+    links.querySelectorAll("a").forEach(function(a){
+      a.addEventListener("click",function(){ links.classList.remove("open"); toggle.setAttribute("aria-expanded","false"); });
+    });
+  }
+
+  /* ---------- seeded PRNG + value-noise flow field : "Current" ---------- */
+  function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;var t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+
+  // gradient/value noise (2D, seeded) — compact Perlin-style
+  function makeNoise(seed){
+    var rnd = mulberry32(seed);
+    var perm = new Uint8Array(512), p = new Uint8Array(256);
+    for(var i=0;i<256;i++) p[i]=i;
+    for(var i=255;i>0;i--){var j=(rnd()*(i+1))|0;var t=p[i];p[i]=p[j];p[j]=t;}
+    for(var i=0;i<512;i++) perm[i]=p[i&255];
+    function fade(t){return t*t*t*(t*(t*6-15)+10);}
+    function lerp(a,b,t){return a+t*(b-a);}
+    function grad(h,x,y){var u=(h&1)?x:-x, v=(h&2)?y:-y; return u+v;}
+    return function(x,y){
+      var X=Math.floor(x)&255, Y=Math.floor(y)&255;
+      x-=Math.floor(x); y-=Math.floor(y);
+      var u=fade(x), v=fade(y);
+      var aa=perm[perm[X]+Y], ab=perm[perm[X]+Y+1],
+          ba=perm[perm[X+1]+Y], bb=perm[perm[X+1]+Y+1];
+      return lerp(lerp(grad(aa,x,y),grad(ba,x-1,y),u),
+                  lerp(grad(ab,x,y-1),grad(bb,x-1,y-1),u),v); // ~[-1,1]
+    };
+  }
+
+  var canvas = document.getElementById("field");
+  var ctx = canvas.getContext("2d", {alpha:false});
+  var W=0,H=0,DPR=1;
+  var SEED = 73;                 // a deliberately tuned seed
+  var noise = makeNoise(SEED);
+  var rng = mulberry32(SEED*2+1);
+  var particles = [];
+  var NP = 0;
+  var SCALE = 0.0016;            // field frequency
+  var raf = null, running=false, t0=0;
+  var pointer = {x:-9999,y:-9999,active:false};
+
+  // amber -> signal palette stops (energy spent -> saved)
+  var C1=[255,180,84], C2=[255,208,137], C3=[120,236,180], C4=[84,232,166];
+  function mix(a,b,t){return [a[0]+(b[0]-a[0])*t, a[1]+(b[1]-a[1])*t, a[2]+(b[2]-a[2])*t];}
+  function energyColor(t){ // t:0 hot -> 1 cool
+    if(t<0.5) return mix(C1,C2,t*2);
+    if(t<0.8) return mix(C2,C3,(t-0.5)/0.3);
+    return mix(C3,C4,(t-0.8)/0.2);
+  }
+
+  function resize(){
+    var r = canvas.getBoundingClientRect();
+    W = Math.max(1, r.width|0); H = Math.max(1, r.height|0);
+    DPR = Math.min(window.devicePixelRatio||1, 2);
+    canvas.width = W*DPR; canvas.height = H*DPR;
+    ctx.setTransform(DPR,0,0,DPR,0,0);
+    // density tuned to area, capped for performance (and, fittingly, energy)
+    NP = Math.min(1700, Math.max(420, Math.round(W*H/850)));
+    seedParticles();
+    paintBg(true);
+    if(reduce) renderStatic();
+  }
+
+  function spawn(p){
+    // spawn across the left two-thirds so particles "flow" rightward, cooling as they travel
+    p.x = rng()* W * 0.72 - W*0.04;
+    p.y = rng()* H;
+    p.life = 0;
+    p.max = 110 + rng()*180;
+    p.sp = 0.6 + rng()*0.95;
+    p.w = rng()<0.18 ? 1.6 : 0.9;
+    return p;
+  }
+  function seedParticles(){
+    particles.length = 0;
+    for(var i=0;i<NP;i++){var p=spawn({}); p.life = rng()*p.max; particles.push(p);}
+  }
+
+  function paintBg(hard){
+    ctx.globalCompositeOperation = "source-over";
+    if(hard){ ctx.fillStyle = "#0b110f"; ctx.fillRect(0,0,W,H); }
+    else { ctx.fillStyle = "rgba(11,17,15,0.085)"; ctx.fillRect(0,0,W,H); }
+  }
+
+  function step(dt, tsec){
+    paintBg(false);
+    ctx.globalCompositeOperation = "lighter";
+    var n = particles.length;
+    for(var i=0;i<n;i++){
+      var p = particles[i];
+      // flow angle from layered noise, slowly evolving in time
+      var a = noise(p.x*SCALE, p.y*SCALE + tsec*0.05) * Math.PI * 1.7
+            + noise(p.x*SCALE*2.3 + 11.7, p.y*SCALE*2.3) * Math.PI * 0.6
+            + 0.18; // slight rightward bias
+      var vx = Math.cos(a)*p.sp, vy = Math.sin(a)*p.sp*0.82;
+
+      // gentle pointer attraction (desktop micro-interaction)
+      if(pointer.active){
+        var dx = pointer.x - p.x, dy = pointer.y - p.y, d2 = dx*dx+dy*dy;
+        if(d2 < 26000){ var f = (1 - d2/26000)*0.9; vx += dx*0.0009*f*60*dt; vy += dy*0.0009*f*60*dt; }
+      }
+
+      var px = p.x, py = p.y;
+      p.x += vx*60*dt; p.y += vy*60*dt;
+      p.life += 60*dt;
+
+      var lt = p.life/p.max;                 // 0..1 age
+      var col = energyColor(Math.min(1,lt));
+      var alpha = Math.sin(Math.min(1,lt)*Math.PI) * 0.6; // fade in & out
+      ctx.strokeStyle = "rgba("+(col[0]|0)+","+(col[1]|0)+","+(col[2]|0)+","+alpha.toFixed(3)+")";
+      ctx.lineWidth = p.w;
+      ctx.beginPath(); ctx.moveTo(px,py); ctx.lineTo(p.x,p.y); ctx.stroke();
+
+      if(p.life>=p.max || p.x>W+40 || p.y<-40 || p.y>H+40){ spawn(p); }
+    }
+  }
+
+  function loop(ts){
+    if(!running) return;
+    if(!t0) t0=ts;
+    var tsec = (ts - t0)/1000;
+    step(0.016, tsec);
+    raf = requestAnimationFrame(loop);
+  }
+
+  function start(){ if(running||reduce) return; running=true; t0=0; raf=requestAnimationFrame(loop); }
+  function stop(){ running=false; if(raf) cancelAnimationFrame(raf); raf=null; }
+
+  // reduced-motion: compose a rich still frame, then leave it
+  function renderStatic(){
+    paintBg(true);
+    ctx.globalCompositeOperation = "lighter";
+    for(var s=0;s<260;s++){
+      var p = spawn({}); p.life = rng()*p.max;
+      for(var k=0;k<60;k++){
+        var a = noise(p.x*SCALE, p.y*SCALE) * Math.PI*1.7 + noise(p.x*SCALE*2.3+11.7,p.y*SCALE*2.3)*Math.PI*0.6 + 0.18;
+        var px=p.x, py=p.y; p.x+=Math.cos(a)*p.sp; p.y+=Math.sin(a)*p.sp*0.82; p.life+=1;
+        var lt=p.life/p.max; var col=energyColor(Math.min(1,lt));
+        ctx.strokeStyle="rgba("+(col[0]|0)+","+(col[1]|0)+","+(col[2]|0)+","+(0.16).toFixed(3)+")";
+        ctx.lineWidth=p.w; ctx.beginPath(); ctx.moveTo(px,py); ctx.lineTo(p.x,p.y); ctx.stroke();
+        if(p.x>W||p.y<0||p.y>H) break;
+      }
+    }
+  }
+
+  // pointer
+  if(window.matchMedia("(pointer:fine)").matches){
+    canvas.addEventListener("pointermove",function(e){var r=canvas.getBoundingClientRect();pointer.x=e.clientX-r.left;pointer.y=e.clientY-r.top;pointer.active=true;});
+    canvas.addEventListener("pointerleave",function(){pointer.active=false;pointer.x=pointer.y=-9999;});
+  }
+
+  // Energy-saving behaviour: only animate while the hero is visible AND the tab is foreground.
+  var heroVisible = true;
+  var io = new IntersectionObserver(function(es){ heroVisible = es[0].isIntersecting; schedule(); },{threshold:0.04});
+  io.observe(canvas);
+  document.addEventListener("visibilitychange", schedule);
+  function schedule(){ if(heroVisible && !document.hidden) start(); else stop(); }
+
+  // debounced resize
+  var rt; window.addEventListener("resize",function(){clearTimeout(rt);rt=setTimeout(resize,160);});
+  resize();
+  schedule();
+
+  /* ---------- count-up: hero readout ---------- */
+  function easeOut(t){return 1-Math.pow(1-t,3);}
+  function animateValue(el, from, to, dur, fmt){
+    if(reduce){ el.textContent = fmt(to); return; }
+    var s=null;
+    function f(ts){ if(!s)s=ts; var t=Math.min(1,(ts-s)/dur); el.textContent=fmt(from+(to-from)*easeOut(t)); if(t<1) requestAnimationFrame(f); }
+    requestAnimationFrame(f);
+  }
+  var comma=function(n){return Math.round(n).toLocaleString("en-US");};
+  var roBase=document.getElementById("ro-base"), roOpt=document.getElementById("ro-opt"), roDelta=document.getElementById("ro-delta");
+  var roDone=false;
+  var roIO=new IntersectionObserver(function(es){
+    if(es[0].isIntersecting && !roDone){ roDone=true;
+      animateValue(roBase,0,1820,1100,comma);
+      animateValue(roOpt,1820,1074,1300,comma);
+      animateValue(roDelta,0,41,1300,function(v){return "−"+Math.round(v)+"%";});
+    }
+  },{threshold:0.5});
+  if(roBase) roIO.observe(roBase.closest(".readout"));
+
+  /* ---------- nav "this page" joule meter (playful, honest-ish) ---------- */
+  var nm=document.getElementById("navmeter"), j=0, lastT=performance.now();
+  function tickMeter(now){
+    var dt=(now-lastT)/1000; lastT=now;
+    // accrue more while animating, basically nothing while paused — the point of the easter egg
+    j += (running ? 0.42 : 0.015) * dt;
+    if(nm) nm.textContent = j.toFixed(1);
+    requestAnimationFrame(tickMeter);
+  }
+  if(!reduce) requestAnimationFrame(tickMeter); else if(nm) nm.textContent="—";
+
+  /* ---------- scroll reveals (enhance already-visible content) ---------- */
+  var revs=document.querySelectorAll(".reveal");
+  if(reduce || !("IntersectionObserver" in window)){
+    revs.forEach(function(el){el.classList.add("show");});
+  } else {
+    var rIO=new IntersectionObserver(function(es){
+      es.forEach(function(e){ if(e.isIntersecting){ e.target.classList.add("show"); rIO.unobserve(e.target);} });
+    },{threshold:0.12, rootMargin:"0px 0px -8% 0px"});
+    revs.forEach(function(el){rIO.observe(el);});
+  }
+
+  /* ---------- console line stagger ---------- */
+  var consoleEl=document.getElementById("console");
+  if(consoleEl){
+    var lines=consoleEl.querySelectorAll(".line");
+    var cDone=false;
+    var cIO=new IntersectionObserver(function(es){
+      if(es[0].isIntersecting && !cDone){ cDone=true;
+        if(reduce){ lines.forEach(function(l){l.classList.add("in");}); return; }
+        lines.forEach(function(l,i){ setTimeout(function(){ l.classList.add("in"); }, 180*i+200); });
+      }
+    },{threshold:0.4});
+    cIO.observe(consoleEl);
+  }
+})();
+</script>
+</body>
+</html>
