@@ -101,7 +101,9 @@ estimate — and other models are scaled from there by size/class.
 Numbers vary by hardware, batching, and quantization, so these are a
 transparent default — not a claim of precision. See
 [`src/estimator/models.rs`](src/estimator/models.rs) for per-model values and
-their calibration comments.
+their calibration comments, and [ROADMAP.md § References](ROADMAP.md#references)
+for the full academic bibliography (Strubell et al. 2019; Patterson et al. 2021;
+Luccioni et al. 2024; Samsi et al. 2023; and others).
 
 ## What Phase 1 does
 

@@ -142,3 +142,47 @@ necessarily the most efficient, and the largest model is not always required.
 By making energy visible, measurable, and optimizable, Joule encourages a new
 performance metric for AI systems: build AI that is not only intelligent, but
 efficient.
+
+## References
+
+The estimator's defaults and the project's motivation are grounded in this
+literature. (See also the calibration table in the [README](README.md).)
+
+### Foundational — energy & carbon of ML
+
+- Strubell, E., Ganesh, A., & McCallum, A. (2019). *Energy and Policy
+  Considerations for Deep Learning in NLP.* Proc. 57th Annual Meeting of the
+  ACL, 3645–3650. arXiv:[1906.02243](https://arxiv.org/abs/1906.02243).
+- Patterson, D., Gonzalez, J., Le, Q., Liang, C., Munguia, L.-M., Rothchild, D.,
+  So, D., Texier, M., & Dean, J. (2021). *Carbon Emissions and Large Neural
+  Network Training.* arXiv:[2104.10350](https://arxiv.org/abs/2104.10350).
+- Luccioni, S., Jernite, Y., & Strubell, E. (2024). *Power Hungry Processing:
+  Watts Driving the Cost of AI Deployment?* ACM FAccT '24.
+  [doi:10.1145/3630106.3658542](https://doi.org/10.1145/3630106.3658542) ·
+  arXiv:[2311.16863](https://arxiv.org/abs/2311.16863).
+
+### Inference energy measurement
+
+- Samsi, S., Zhao, D., McDonald, J., Li, B., Michaleas, A., Jones, M.,
+  Bergeron, W., Kepner, J., Tiwari, D., & Gadepally, V. (2023). *From Words to
+  Watts: Benchmarking the Energy Costs of Large Language Model Inference.* 2023
+  IEEE High Performance Extreme Computing Conference (HPEC), 1–9.
+  [[Semantic Scholar]](https://www.semanticscholar.org/paper/4ea8e22236681a09225ee3f8ff5fffd934ec9bae)
+- *How Hungry is AI? Benchmarking Energy, Water, and Carbon Footprint of LLM
+  Inference* (2025). arXiv:[2505.09598](https://arxiv.org/abs/2505.09598).
+- Epoch AI (2025). *How much energy does ChatGPT use?*
+  [Report](https://epoch.ai/gradient-updates/how-much-energy-does-chatgpt-use).
+- *Energy use of AI inference, efficiency pathways, and test-time scaling*
+  (2026). *Joule.*
+  [ScienceDirect](https://www.sciencedirect.com/science/article/pii/S2542435126001145).
+
+### Efficiency techniques
+
+- van Baalen, M., et al. (2023). *FP8 versus INT8 for Efficient Deep Learning
+  Inference.* arXiv:[2303.17951](https://arxiv.org/abs/2303.17951).
+- *MLPerf Power: Benchmarking the Energy Efficiency of Machine Learning Systems
+  from Microwatts to Megawatts for Sustainable AI* (2024).
+  arXiv:[2410.12032](https://arxiv.org/abs/2410.12032).
+
+> Citations to recent preprints list the title and identifier where the full
+> author list was not independently verified, to avoid misattribution.
