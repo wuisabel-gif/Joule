@@ -1,14 +1,15 @@
 <p align="center">
-  <img src="site/assets/joule-banner.svg" alt="Joule — energy-aware optimization for LLM inference" width="820">
+  <img src="logo.png" alt="Joule" width="140" height="140">
 </p>
+
+<h1 align="center">Joule</h1>
+<p align="center"><em>Energy-aware optimization for LLM inference</em></p>
 
 <p align="center">
   <a href="https://github.com/wuisabel-gif/Joule/actions/workflows/ci.yml"><img src="https://github.com/wuisabel-gif/Joule/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   &nbsp;<a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-2FE08A.svg" alt="License: Apache-2.0"></a>
   &nbsp;<img src="https://img.shields.io/badge/Rust-1.96%2B-2FE08A.svg" alt="Rust">
 </p>
-
-# Joule
 
 Energy-aware optimization middleware for LLM inference.
 
