@@ -7,9 +7,10 @@ OpenAI-compatible API, and answers one question for every request:
 
 > How many joules did this response cost, and could it have been lower?
 
-This repository currently implements **Phase 1**: a transparent measuring proxy.
-Optimization, caching, and routing (Phases 2–4) build on top of these
-measurements. See [`AGENT.md`](AGENT.md) for the full vision and roadmap.
+This repository implements **Phase 1** (a transparent measuring proxy) plus the
+prompt-optimization and routing pieces of Phases 2–3. Semantic caching and
+carbon-aware scheduling are still ahead. See [`ROADMAP.md`](ROADMAP.md) for the
+full vision and phase-by-phase status.
 
 ## Why bother — the energy stack
 
