@@ -17,6 +17,8 @@ pub struct Metrics {
     co2_grams_total: CounterVec,
     cost_usd_total: CounterVec,
     latency_seconds: HistogramVec,
+    tokens_saved_total: IntCounterVec,
+    energy_saved_joules_total: CounterVec,
 }
 
 impl Metrics {
@@ -66,6 +68,24 @@ impl Metrics {
         )
         .expect("valid metric");
 
+        let tokens_saved_total = IntCounterVec::new(
+            Opts::new(
+                "joule_prompt_tokens_saved_total",
+                "Prompt tokens removed by optimization.",
+            ),
+            &["model"],
+        )
+        .expect("valid metric");
+
+        let energy_saved_joules_total = CounterVec::new(
+            Opts::new(
+                "joule_energy_saved_joules_total",
+                "Estimated energy saved by optimization in joules.",
+            ),
+            &["model"],
+        )
+        .expect("valid metric");
+
         registry
             .register(Box::new(requests_total.clone()))
             .expect("register");
@@ -87,6 +107,12 @@ impl Metrics {
         registry
             .register(Box::new(latency_seconds.clone()))
             .expect("register");
+        registry
+            .register(Box::new(tokens_saved_total.clone()))
+            .expect("register");
+        registry
+            .register(Box::new(energy_saved_joules_total.clone()))
+            .expect("register");
 
         Self {
             registry,
@@ -97,6 +123,8 @@ impl Metrics {
             co2_grams_total,
             cost_usd_total,
             latency_seconds,
+            tokens_saved_total,
+            energy_saved_joules_total,
         }
     }
 
@@ -134,6 +162,20 @@ impl Metrics {
         self.latency_seconds
             .with_label_values(&[model])
             .observe(latency_secs);
+    }
+
+    /// Record prompt-optimization savings for a request.
+    pub fn observe_savings(&self, model: &str, tokens_saved: u64, energy_saved_j: f64) {
+        if tokens_saved > 0 {
+            self.tokens_saved_total
+                .with_label_values(&[model])
+                .inc_by(tokens_saved);
+        }
+        if energy_saved_j > 0.0 {
+            self.energy_saved_joules_total
+                .with_label_values(&[model])
+                .inc_by(energy_saved_j);
+        }
     }
 
     /// Render the registry in the Prometheus text exposition format.

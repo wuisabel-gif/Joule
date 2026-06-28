@@ -27,6 +27,14 @@ pub struct RequestRecord {
     pub status: u16,
     pub streamed: bool,
     pub token_source: String,
+    /// Whether the prompt optimizer changed this request.
+    pub optimized: bool,
+    /// Prompt tokens removed by optimization.
+    pub tokens_saved: u64,
+    /// Estimated input-side energy saved by optimization (J).
+    pub energy_saved_j: f64,
+    /// Comma-separated names of optimization passes that fired.
+    pub optimizations: String,
 }
 
 impl RequestRecord {
@@ -62,9 +70,23 @@ impl Store {
                  cost_usd       REAL    NOT NULL,
                  status         INTEGER NOT NULL,
                  streamed       INTEGER NOT NULL,
-                 token_source   TEXT    NOT NULL
+                 token_source   TEXT    NOT NULL,
+                 optimized      INTEGER NOT NULL DEFAULT 0,
+                 tokens_saved   INTEGER NOT NULL DEFAULT 0,
+                 energy_saved_j REAL    NOT NULL DEFAULT 0,
+                 optimizations  TEXT    NOT NULL DEFAULT ''
              );",
         )?;
+        // Migrate databases created before the optimizer columns existed.
+        for stmt in [
+            "ALTER TABLE requests ADD COLUMN optimized INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE requests ADD COLUMN tokens_saved INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE requests ADD COLUMN energy_saved_j REAL NOT NULL DEFAULT 0",
+            "ALTER TABLE requests ADD COLUMN optimizations TEXT NOT NULL DEFAULT ''",
+        ] {
+            // Ignore "duplicate column" errors on already-migrated databases.
+            let _ = conn.execute(stmt, []);
+        }
         Ok(Self {
             conn: Mutex::new(conn),
         })
@@ -77,8 +99,9 @@ impl Store {
         conn.execute(
             "INSERT INTO requests
                 (ts, model, input_tokens, output_tokens, latency_ms,
-                 energy_j, electricity_wh, co2_g, cost_usd, status, streamed, token_source)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+                 energy_j, electricity_wh, co2_g, cost_usd, status, streamed, token_source,
+                 optimized, tokens_saved, energy_saved_j, optimizations)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
             rusqlite::params![
                 r.ts,
                 r.model,
@@ -92,6 +115,10 @@ impl Store {
                 r.status,
                 r.streamed as i64,
                 r.token_source,
+                r.optimized as i64,
+                r.tokens_saved,
+                r.energy_saved_j,
+                r.optimizations,
             ],
         )?;
         Ok(())
@@ -102,7 +129,8 @@ impl Store {
         let conn = self.conn.lock().expect("store mutex");
         let mut stmt = conn.prepare(
             "SELECT ts, model, input_tokens, output_tokens, latency_ms,
-                    energy_j, electricity_wh, co2_g, cost_usd, status, streamed, token_source
+                    energy_j, electricity_wh, co2_g, cost_usd, status, streamed, token_source,
+                    optimized, tokens_saved, energy_saved_j, optimizations
              FROM requests ORDER BY id DESC LIMIT ?1",
         )?;
         let rows = stmt.query_map([limit], |row| {
@@ -119,6 +147,10 @@ impl Store {
                 status: row.get::<_, i64>(9)? as u16,
                 streamed: row.get::<_, i64>(10)? != 0,
                 token_source: row.get(11)?,
+                optimized: row.get::<_, i64>(12)? != 0,
+                tokens_saved: row.get::<_, i64>(13)? as u64,
+                energy_saved_j: row.get(14)?,
+                optimizations: row.get(15)?,
             })
         })?;
         let mut out = Vec::new();
@@ -137,7 +169,9 @@ impl Store {
                     COALESCE(SUM(output_tokens), 0),
                     COALESCE(SUM(energy_j), 0),
                     COALESCE(SUM(co2_g), 0),
-                    COALESCE(SUM(cost_usd), 0)
+                    COALESCE(SUM(cost_usd), 0),
+                    COALESCE(SUM(tokens_saved), 0),
+                    COALESCE(SUM(energy_saved_j), 0)
              FROM requests",
             [],
             |row| {
@@ -148,6 +182,8 @@ impl Store {
                     energy_j: row.get(3)?,
                     co2_g: row.get(4)?,
                     cost_usd: row.get(5)?,
+                    tokens_saved: row.get::<_, i64>(6)? as u64,
+                    energy_saved_j: row.get(7)?,
                 })
             },
         )
@@ -164,4 +200,6 @@ pub struct Totals {
     pub energy_j: f64,
     pub co2_g: f64,
     pub cost_usd: f64,
+    pub tokens_saved: u64,
+    pub energy_saved_j: f64,
 }

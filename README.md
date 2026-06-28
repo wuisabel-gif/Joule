@@ -11,6 +11,71 @@ This repository currently implements **Phase 1**: a transparent measuring proxy.
 Optimization, caching, and routing (Phases 2–4) build on top of these
 measurements. See [`AGENT.md`](AGENT.md) for the full vision and roadmap.
 
+## Why bother — the energy stack
+
+AI energy isn't burned in one place. There are opportunities to reduce it at
+**every layer of the stack**, from the user's prompt all the way down to the
+power grid. Organizing them as layers reveals where the savings are — and where
+research is still needed:
+
+| Layer | Technique | Typical impact | Joule today |
+|-------|-----------|----------------|-------------|
+| User | Better prompts | Fewer tokens generated | ✅ optimizer passes |
+| Application | Semantic caching | Avoid repeated inference | 🔜 Phase 2 |
+| Agent | Better planning | Avoid unnecessary tool calls | — |
+| Model | Smaller / specialized models | Large energy savings | ✅ `greenest` router |
+| Inference | Quantization | Lower computation & memory | provider-side |
+| Serving | Batching & scheduling | Higher GPU utilization | provider-side |
+| Hardware | Efficient accelerators | Better performance per watt | provider-side |
+| Data center | Cooling & power optimization | Lower facility overhead | — |
+| Grid | Carbon-aware scheduling | Lower emissions | 🔜 Phase 4 |
+
+The cheapest token is the one you never generate. A few of these levers in more
+detail:
+
+- **Prompt optimization** (layer 1) — remove redundant context, drop repeated
+  instructions, specify output length. `Summarize this paper.` →
+  `Summarize in ≤150 words; focus on methodology and conclusions.` Less work
+  before the model even starts. *Joule does this today — see below.*
+- **Smaller models** (layer 4) — spell-check, JSON formatting, classification,
+  and translation rarely need a frontier model. Routing simple requests to
+  lightweight models is one of the biggest single savings. *Joule's `greenest`
+  router moves in this direction.*
+- **Semantic caching** (layer 3) — if someone already asked "What is Newton's
+  Second Law?", return the previous answer. No GPU inference, near-zero energy.
+- **Better memory** (layer 4) — retrieve only the *relevant* context (400
+  tokens) instead of the whole conversation (40,000). Less attention compute,
+  lower energy.
+- **Quantization, sparsity, better decoding** (layers 5–7) — FP8/INT4,
+  Mixture-of-Experts, speculative decoding: same answer, less computation.
+  Largely provider-side, but Joule can *measure* and *prefer* the efficient path.
+- **Carbon-aware scheduling** (layer 9) — the same kWh is not equally clean
+  everywhere. Defer or relocate non-urgent batch work to cleaner grids.
+
+**Measurement underpins all of it.** Most developers know latency, cost, and
+tokens; very few know joules, Wh, or CO₂. Without measurement, optimization is
+guesswork — which is why Joule starts by making energy observable.
+
+### Where Joule fits
+
+The exciting opportunity isn't inventing another model — it's becoming the
+**LLVM of energy-efficient AI**: a single layer the request passes through that
+applies whichever optimizations are safe and explains what it did.
+
+```
+Prompt
+  │
+  ▼
+Joule ── Measure ─ Optimize ─ Cache ─ Retrieve only needed memory
+       ─ Select model ─ Route ─ Carbon-aware schedule ─ Estimate ─ Explain
+  │
+  ▼
+LLM
+```
+
+Instead of asking only *"How many tokens?"*, Joule asks the broader question:
+*"Was this computation necessary?"*
+
 ## What Phase 1 does
 
 - **OpenAI-compatible proxy** — point your client's base URL at Joule; it
@@ -22,6 +87,8 @@ measurements. See [`AGENT.md`](AGENT.md) for the full vision and roadmap.
 - **Energy estimation** — converts tokens into estimated joules, watt-hours,
   grams of CO₂, and USD using a per-model profile table and a configurable grid
   carbon intensity.
+- **Prompt optimization** — composable, explainable passes that strip redundant
+  tokens before inference (and report exactly what they saved). See below.
 - **Metrics** — Prometheus exposition at `/metrics`, labelled by model.
 - **Request log** — every request is persisted to SQLite and summarised at
   `/stats`.
@@ -68,6 +135,47 @@ curl -s http://127.0.0.1:8080/stats     # JSON: lifetime totals + recent request
 
 Works with any OpenAI-compatible upstream — OpenAI, local Ollama
 (`--upstream http://localhost:11434`), LM Studio, vLLM, llama.cpp, etc.
+
+## Prompt optimization (plugins)
+
+The cheapest token is the one you never generate. Joule optimizes the prompt
+*before* inference through a pipeline of composable, explainable passes
+([`src/optimizer`](src/optimizer)), gated by an intensity level:
+
+| Level | Passes | Lossless? |
+|-------|--------|-----------|
+| `off` | none | — |
+| `lite` (default) | `collapse-whitespace`, `dedup-messages` | yes — formatting only |
+| `full` | + `collapse-repeated-lines`, `strip-filler` | yes — content cleanup |
+| `ultra` | + `output-limit`, `brevity-hint` | no — changes model behaviour |
+
+`lite`/`full` only remove redundancy (whitespace, duplicate messages, repeated
+lines, filler like "could you please"). `ultra` adds the biggest lever —
+bounding/encouraging shorter **output** — which changes behaviour, so it is
+opt-in and clearly reported.
+
+Nothing happens invisibly: each request returns `x-joule-optimized`,
+`x-joule-prompt-saved-tokens`, `x-joule-energy-saved-j`, and
+`x-joule-optimizations` headers, and savings are aggregated in `/stats` and
+`/metrics` (`joule_prompt_tokens_saved_total`, `joule_energy_saved_joules_total`).
+
+Set the level on the proxy with `--optimize <level>` (or `"optimize"` in the
+config file).
+
+### As a standalone prompt improver
+
+```sh
+echo "Could you please summarize this paper." | joule optimize --level full --model gpt-4o
+```
+
+```
+Optimization Summary (full)
+  ✓ normalized whitespace in 1 message(s)
+  ✓ removed filler phrases in 1 message(s)
+  Prompt tokens: 49 → 18 (−31, 63% saved)
+
+Prompt energy (input side) for gpt-4o: 19.600 J → 7.200 J (saved 12.400 J)
+```
 
 ## Providers & routing (plugins)
 
@@ -129,6 +237,7 @@ For the `greenest` router, add a candidate list:
 
 ```sh
 joule estimate --model gpt-4o --input 1200 --output 400
+joule optimize --level full --model gpt-4o --text "Could you please help me"
 joule models
 ```
 
@@ -139,8 +248,9 @@ joule models
 | `--listen` | `JOULE_LISTEN` | `127.0.0.1:8080` | bind address |
 | `--config` | `JOULE_CONFIG` | — | JSON multi-provider config (overrides single-provider flags) |
 | `--upstream` | `JOULE_UPSTREAM` | `https://api.openai.com` | provider base URL |
-| `--provider-kind` | — | `openai` | `openai` or `anthropic` |
+| `--provider-kind` | — | `openai` | `openai`, `anthropic`, or `gemini` |
 | `--router` | — | `static` | `static`, `model`, or `greenest` |
+| `--optimize` | — | `lite` | `off`, `lite`, `full`, or `ultra` |
 | `--api-key` | `JOULE_UPSTREAM_API_KEY` | — | fallback credential |
 | `--db` | `JOULE_DB` | `joule.db` | SQLite request log |
 | `--grid-intensity` | `JOULE_GRID_INTENSITY` | `400` | g CO₂ / kWh |

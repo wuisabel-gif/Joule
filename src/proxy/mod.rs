@@ -20,6 +20,7 @@ use tracing::warn;
 use crate::error::AppError;
 use crate::estimator::{EnergyEstimate, Estimator};
 use crate::metrics::Metrics;
+use crate::optimizer::Optimizer;
 use crate::provider::ProviderRegistry;
 use crate::router::Router;
 use crate::store::{RequestRecord, Store};
@@ -38,6 +39,16 @@ pub struct AppState {
     pub client: reqwest::Client,
     pub registry: Arc<ProviderRegistry>,
     pub router: Arc<dyn Router>,
+    pub optimizer: Arc<Optimizer>,
+}
+
+/// Prompt-optimization outcome carried alongside a request.
+#[derive(Clone, Default)]
+struct Optimization {
+    optimized: bool,
+    tokens_saved: u64,
+    energy_saved_j: f64,
+    passes: String,
 }
 
 impl AppState {
@@ -53,6 +64,7 @@ impl AppState {
         latency: Duration,
         streamed: bool,
         source: TokenSource,
+        opt: &Optimization,
     ) -> EnergyEstimate {
         let estimate = self.estimator.estimate(model, input_tokens, output_tokens);
 
@@ -66,6 +78,8 @@ impl AppState {
             estimate.cost_usd,
             latency.as_secs_f64(),
         );
+        self.metrics
+            .observe_savings(model, opt.tokens_saved, opt.energy_saved_j);
 
         let record = RequestRecord {
             ts: RequestRecord::now(),
@@ -80,6 +94,10 @@ impl AppState {
             status,
             streamed,
             token_source: source.as_str().to_string(),
+            optimized: opt.optimized,
+            tokens_saved: opt.tokens_saved,
+            energy_saved_j: opt.energy_saved_j,
+            optimizations: opt.passes.clone(),
         };
         if let Err(e) = self.store.record(&record) {
             warn!("failed to persist request record: {e}");
@@ -123,7 +141,7 @@ async fn chat_completions(
     headers: HeaderMap,
     body: Bytes,
 ) -> Result<Response, AppError> {
-    let request: Value = serde_json::from_slice(&body)
+    let mut request: Value = serde_json::from_slice(&body)
         .map_err(|e| AppError::new(StatusCode::BAD_REQUEST, format!("invalid JSON body: {e}")))?;
 
     let requested_model = request
@@ -135,6 +153,13 @@ async fn chat_completions(
         .get("stream")
         .and_then(Value::as_bool)
         .unwrap_or(false);
+
+    // Optimize the prompt before anything else — the cheapest token is the one
+    // we never send. Token estimates below are taken from the optimized request.
+    let report = state.optimizer.optimize(&mut request);
+    if report.changed() {
+        tracing::info!(saved = report.tokens_saved(), passes = %report.pass_names(), "optimized prompt");
+    }
     let prompt_tokens_est = estimate_prompt_tokens(&request);
 
     // Route, then capture everything we need as owned values so the borrow of
@@ -146,6 +171,18 @@ async fn chat_completions(
     let provider_name = decision.provider.name().to_string();
     let model = decision.model.clone();
     let route_reason = decision.reason.clone();
+
+    // Optimization savings are input-side: the prompt tokens we removed times
+    // the chosen model's per-input-token energy.
+    let optimization = Optimization {
+        optimized: report.changed(),
+        tokens_saved: report.tokens_saved(),
+        energy_saved_j: state
+            .estimator
+            .estimate(&model, report.tokens_saved(), 0)
+            .energy_j,
+        passes: report.pass_names(),
+    };
 
     let request_builder = decision
         .provider
@@ -175,6 +212,7 @@ async fn chat_completions(
         started,
         status,
         content_type,
+        optimization,
     };
 
     if is_stream {
@@ -193,6 +231,7 @@ struct RequestCtx {
     started: Instant,
     status: u16,
     content_type: String,
+    optimization: Optimization,
 }
 
 /// Handle a non-streaming upstream response: read it fully, translate it to
@@ -234,6 +273,7 @@ async fn buffered_response(
         latency,
         false,
         source,
+        &ctx.optimization,
     );
 
     // Re-serialise the (possibly translated) body so clients see OpenAI shape.
@@ -266,6 +306,9 @@ fn stream_response(
         .header(CONTENT_TYPE, &ctx.content_type)
         .header("x-joule-provider", &ctx.provider_name)
         .header("x-joule-route", &ctx.route_reason)
+        .header("x-joule-optimized", ctx.optimization.optimized.to_string())
+        .header("x-joule-prompt-saved-tokens", ctx.optimization.tokens_saved.to_string())
+        .header("x-joule-optimizations", &ctx.optimization.passes)
         .header("x-joule-streamed", "true");
 
     let body = async_stream::stream! {
@@ -297,7 +340,7 @@ fn stream_response(
                 TokenSource::Estimated,
             ),
         };
-        state.finalize(&ctx.model, ctx.status, input_tokens, output_tokens, latency, true, source);
+        state.finalize(&ctx.model, ctx.status, input_tokens, output_tokens, latency, true, source, &ctx.optimization);
     };
 
     builder
@@ -372,6 +415,10 @@ fn with_joule_headers(
         .header("x-joule-co2-g", format!("{:.6}", estimate.co2_g))
         .header("x-joule-cost-usd", format!("{:.6}", estimate.cost_usd))
         .header("x-joule-token-source", source.as_str())
+        .header("x-joule-optimized", ctx.optimization.optimized.to_string())
+        .header("x-joule-prompt-saved-tokens", ctx.optimization.tokens_saved.to_string())
+        .header("x-joule-energy-saved-j", format!("{:.4}", ctx.optimization.energy_saved_j))
+        .header("x-joule-optimizations", &ctx.optimization.passes)
         .header("x-joule-streamed", streamed.to_string())
 }
 

@@ -9,6 +9,7 @@ use clap::ValueEnum;
 use serde::Deserialize;
 
 use crate::estimator::{Estimator, DEFAULT_GRID_INTENSITY_G_PER_KWH};
+use crate::optimizer::{OptLevel, Optimizer};
 use crate::provider::{
     AnthropicProvider, GeminiProvider, OpenAiCompatibleProvider, Provider, ProviderRegistry,
 };
@@ -72,6 +73,9 @@ pub struct Config {
     /// Candidate models for the `greenest` router.
     #[serde(default)]
     pub greenest_candidates: Vec<String>,
+    /// Prompt-optimization intensity.
+    #[serde(default)]
+    pub optimize: OptLevel,
     #[serde(default = "default_grid")]
     pub grid_intensity: f64,
 }
@@ -90,11 +94,13 @@ impl Config {
     }
 
     /// Build a single-provider configuration from the quickstart flags.
+    #[allow(clippy::too_many_arguments)]
     pub fn single(
         upstream: String,
         api_key: Option<String>,
         kind: ProviderKind,
         router: RouterKind,
+        optimize: OptLevel,
         grid_intensity: f64,
     ) -> Self {
         Config {
@@ -109,8 +115,14 @@ impl Config {
             default_provider: Some("default".to_string()),
             router,
             greenest_candidates: Vec::new(),
+            optimize,
             grid_intensity,
         }
+    }
+
+    /// Build the configured optimizer.
+    pub fn optimizer(&self) -> Optimizer {
+        Optimizer::new(self.optimize)
     }
 
     /// The resolved default provider name (first provider if unset).
