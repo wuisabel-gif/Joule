@@ -263,4 +263,4 @@ cargo test
 
 ## License
 
-MIT
+Apache-2.0 — see [LICENSE](LICENSE).

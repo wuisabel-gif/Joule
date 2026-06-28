@@ -3,7 +3,7 @@ name = "joule"
 version = "0.1.0"
 edition = "2021"
 description = "Energy-aware optimization middleware for LLM inference."
-license = "MIT"
+license = "Apache-2.0"
 readme = "README.md"
 
 [[bin]]
