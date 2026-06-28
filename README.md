@@ -336,21 +336,19 @@ cargo test
 
 ## Part of a bigger vision
 
-Joule is one of three projects circling the same idea from different angles —
-that much of what AI systems do is *wasted work*, and the waste is measurable
-and reducible:
+Joule is one of a few projects exploring how to make AI systems leaner and
+easier to live with:
 
-- 🐋 [**MemWhale**](https://github.com/wuisabel-gif/MemWhale) — cuts **context
-  waste** by remembering only what matters, so a request carries the ~400
-  relevant tokens instead of 40,000.
-- 🐬 **Delphin** — cuts **interaction waste** by preventing abandoned or
-  duplicated work during a conversation.
-- ⚡ **Joule** — cuts **compute waste** by measuring and optimizing the energy of
-  the whole inference pipeline.
+- 🐋 [**MemWhale**](https://github.com/wuisabel-gif/MemWhale) — a local-first
+  terminal memory system that remembers everything you put in, so a request
+  carries only what matters.
+- 🐬 [**Delphin**](https://github.com/wuisabel-gif/Delphin) — a duplex companion
+  for AI agent CLIs: talk and listen at the same time.
+- ⚡ **Joule** — energy-aware middleware that measures and optimizes the joules,
+  CO₂, and cost of every inference.
 
-Different problems, the same pattern wearing different masks. Together they aim
-at one goal: making AI not just more capable, but more efficient — in memory,
-communication, and energy.
+Different problems that often turn out to be the same pattern wearing different
+masks.
 
 ## License
 
