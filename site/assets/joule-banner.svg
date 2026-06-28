@@ -1,0 +1,46 @@
+<svg width="900" height="260" viewBox="0 0 900 260" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Joule — energy-aware optimization for LLM inference">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="900" y2="260" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0E3A24"/>
+      <stop offset="0.55" stop-color="#0A2A1B"/>
+      <stop offset="1" stop-color="#082016"/>
+    </linearGradient>
+    <linearGradient id="boltB" x1="320" y1="78" x2="372" y2="182" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#9CFFCB"/><stop offset="1" stop-color="#2FE08A"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.78" cy="0.1" r="0.8">
+      <stop stop-color="#34E08A" stop-opacity="0.18"/><stop offset="1" stop-color="#34E08A" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect x="1" y="1" width="898" height="258" rx="28" fill="url(#bg)"/>
+  <rect x="1" y="1" width="898" height="258" rx="28" fill="url(#glow)"/>
+  <rect x="1.5" y="1.5" width="897" height="257" rx="27.5" stroke="#43C383" stroke-opacity="0.30" stroke-width="1.5"/>
+
+  <!-- mark tile -->
+  <g transform="translate(96,82) scale(1.0)">
+    <rect x="0" y="0" width="96" height="96" rx="24" fill="#0B2A1B"/>
+    <rect x="0.75" y="0.75" width="94.5" height="94.5" rx="23.25" stroke="#43C383" stroke-opacity="0.5" stroke-width="1.5"/>
+    <path d="M24 68 A30 30 0 1 1 68 68" stroke="#43C383" stroke-opacity="0.28" stroke-width="3" stroke-linecap="round" fill="none"/>
+    <path d="M24 68 A30 30 0 0 1 26 31" stroke="url(#boltB)" stroke-opacity="0.7" stroke-width="3" stroke-linecap="round" fill="none"/>
+    <path d="M52 12 L28 50 H42 L40 82 L65 42 H50 L52 12 Z" fill="url(#boltB)"/>
+  </g>
+
+  <!-- wordmark -->
+  <text x="232" y="128" font-family="'Helvetica Neue', Arial, sans-serif" font-size="76" font-weight="800" letter-spacing="-3" fill="#F2FBF4">Joule</text>
+  <text x="234" y="170" font-family="ui-monospace, 'SF Mono', Menlo, monospace" font-size="19" letter-spacing="0.5" fill="#8FD9AE">Energy-aware optimization for LLM inference</text>
+
+  <!-- readout chip echoing the product -->
+  <g transform="translate(234,194)">
+    <rect x="0" y="0" width="250" height="34" rx="9" fill="#0C3322" stroke="#2E7D54" stroke-opacity="0.5"/>
+    <circle cx="20" cy="17" r="4" fill="#34E08A"/>
+    <text x="34" y="22" font-family="ui-monospace, 'SF Mono', Menlo, monospace" font-size="14" fill="#A9E8C4">x-joule-energy-j: </text>
+    <text x="186" y="22" font-family="ui-monospace, 'SF Mono', Menlo, monospace" font-size="14" font-weight="600" fill="#5DF2A1">2.60 J</text>
+  </g>
+
+  <!-- version pill -->
+  <g transform="translate(792,40)">
+    <rect x="0" y="0" width="72" height="28" rx="14" fill="none" stroke="#43C383" stroke-opacity="0.5"/>
+    <text x="36" y="19" text-anchor="middle" font-family="ui-monospace, 'SF Mono', Menlo, monospace" font-size="13" fill="#5DF2A1">v0.1.0</text>
+  </g>
+</svg>
