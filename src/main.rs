@@ -4,6 +4,7 @@
 //! estimation, Prometheus metrics, a SQLite request log, and a small CLI.
 //! Requests are dispatched through pluggable provider and router components.
 
+mod cache;
 mod cli;
 mod config;
 mod error;
@@ -64,6 +65,8 @@ async fn serve(args: ServeArgs) -> Result<()> {
             args.provider_kind,
             args.router,
             args.optimize,
+            !args.no_cache,
+            args.cache_capacity,
             args.grid_intensity,
         ),
     };
@@ -72,6 +75,7 @@ async fn serve(args: ServeArgs) -> Result<()> {
     let registry = config.build_registry().context("building providers")?;
     let router_plugin = config.build_router(estimator);
     let optimizer = config.optimizer();
+    let cache = config.build_cache();
 
     let store = Store::open(&args.db).with_context(|| format!("opening database {}", args.db))?;
 
@@ -82,6 +86,7 @@ async fn serve(args: ServeArgs) -> Result<()> {
         default = registry.default_name(),
         router = router_plugin.name(),
         optimize = optimizer.level().as_str(),
+        cache = cache.enabled(),
         "joule proxy starting",
     );
     info!("metrics at /metrics, request log at /stats, health at /healthz");
@@ -94,6 +99,7 @@ async fn serve(args: ServeArgs) -> Result<()> {
         registry: Arc::new(registry),
         router: Arc::from(router_plugin),
         optimizer: Arc::new(optimizer),
+        cache: Arc::new(cache),
     };
 
     let app = proxy::router(state);

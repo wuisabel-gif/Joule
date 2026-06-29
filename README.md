@@ -19,9 +19,9 @@ OpenAI-compatible API, and answers one question for every request:
 > How many joules did this response cost, and could it have been lower?
 
 This repository implements **Phase 1** (a transparent measuring proxy) plus the
-prompt-optimization and routing pieces of Phases 2–3. Semantic caching and
-carbon-aware scheduling are still ahead. See [`ROADMAP.md`](ROADMAP.md) for the
-full vision and phase-by-phase status.
+prompt-optimization, exact-match caching, and routing pieces of Phases 2–3.
+Semantic caching and carbon-aware scheduling are still ahead. See
+[`ROADMAP.md`](ROADMAP.md) for the full vision and phase-by-phase status.
 
 ## Why bother — the energy stack
 
@@ -33,7 +33,7 @@ research is still needed:
 | Layer | Technique | Typical impact | Joule today |
 |-------|-----------|----------------|-------------|
 | User | Better prompts | Fewer tokens generated | ✅ optimizer passes |
-| Application | Semantic caching | Avoid repeated inference | 🔜 Phase 2 |
+| Application | Caching | Avoid repeated inference | ✅ exact-match (semantic next) |
 | Agent | Better planning | Avoid unnecessary tool calls | — |
 | Model | Smaller / specialized models | Large energy savings | ✅ `greenest` router |
 | Inference | Quantization | Lower computation & memory | provider-side |
@@ -121,12 +121,16 @@ Luccioni et al. 2024; Samsi et al. 2023; and others).
 - **OpenAI-compatible proxy** — point your client's base URL at Joule; it
   forwards `/v1/chat/completions` (streaming and non-streaming) and transparently
   passes through every other `/v1/*` route (embeddings, model lists, …).
-- **Token accounting** — prefers the provider's reported `usage`; falls back to a
-  ~4-chars/token heuristic and records which source was used, so estimates and
-  ground truth are never conflated.
+- **Token accounting** — prefers the provider's reported `usage`; otherwise
+  counts with a real BPE tokenizer ([tiktoken](https://github.com/openai/tiktoken):
+  `o200k_base` / `cl100k_base` by model) and records which source was used, so
+  estimates and ground truth are never conflated.
 - **Energy estimation** — converts tokens into estimated joules, watt-hours,
   grams of CO₂, and USD using a per-model profile table and a configurable grid
   carbon intensity.
+- **Exact-match cache** — identical requests skip inference entirely and return
+  the stored response: **~0 J, $0, near-zero latency**. Joule reports the energy
+  it avoided. On by default; disable with `--no-cache`. See below.
 - **Prompt optimization** — composable, explainable passes that strip redundant
   tokens before inference (and report exactly what they saved). See below.
 - **Metrics** — Prometheus exposition at `/metrics`, labelled by model.
@@ -250,6 +254,32 @@ Optimization Summary (full)
 Prompt energy (input side) for gpt-4o: 29.400 J → 13.800 J (saved 15.600 J)
 ```
 
+## Caching
+
+The cheapest inference is the one that never runs. Joule keeps an in-memory
+exact-match cache keyed on the request (model + messages + sampling params).
+A byte-identical request skips the upstream call and returns the stored
+response — **~0 J, $0, near-zero latency** — and Joule reports the energy it
+avoided:
+
+```
+# first call → miss, costs energy
+x-joule-cache: miss
+x-joule-energy-j: 3.3500
+
+# identical call → hit, free
+x-joule-cache: hit
+x-joule-energy-j: 0.0000
+x-joule-energy-saved-j: 3.3500
+x-joule-token-source: cache
+```
+
+Hits increment `joule_cache_hits_total` and add to `joule_energy_saved_joules_total`.
+The cache is on by default (`--no-cache` to disable, `--cache-capacity` to size
+it); it is in-memory, bounded (LRU), and never caches streaming requests. Note
+that with `temperature > 0` a hit replays a prior sample verbatim — the intended
+behaviour of an exact-match cache.
+
 ## Providers & routing (plugins)
 
 Joule dispatches each request through two pluggable layers:
@@ -324,6 +354,8 @@ joule models
 | `--provider-kind` | — | `openai` | `openai`, `anthropic`, or `gemini` |
 | `--router` | — | `static` | `static`, `model`, or `greenest` |
 | `--optimize` | — | `lite` | `off`, `lite`, `full`, or `ultra` |
+| `--no-cache` | — | off (cache on) | disable the exact-match response cache |
+| `--cache-capacity` | `JOULE_CACHE_CAPACITY` | `1024` | max cached responses (LRU) |
 | `--api-key` | `JOULE_UPSTREAM_API_KEY` | — | fallback credential |
 | `--db` | `JOULE_DB` | `joule.db` | SQLite request log |
 | `--grid-intensity` | `JOULE_GRID_INTENSITY` | `445` | g CO₂ / kWh (IEA 2024 global avg) |

@@ -1,6 +1,6 @@
 [package]
 name = "joule"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 description = "Energy-aware optimization middleware for LLM inference."
 license = "Apache-2.0"
@@ -26,6 +26,8 @@ async-stream = "0.3"
 bytes = "1"
 anyhow = "1"
 time = { version = "0.3", features = ["formatting"] }
+lru = "0.12"
+tiktoken-rs = "0.6"
 
 [profile.release]
 lto = true

@@ -19,6 +19,7 @@ pub struct Metrics {
     latency_seconds: HistogramVec,
     tokens_saved_total: IntCounterVec,
     energy_saved_joules_total: CounterVec,
+    cache_hits_total: IntCounterVec,
 }
 
 impl Metrics {
@@ -80,7 +81,16 @@ impl Metrics {
         let energy_saved_joules_total = CounterVec::new(
             Opts::new(
                 "joule_energy_saved_joules_total",
-                "Estimated energy saved by optimization in joules.",
+                "Estimated energy saved by optimization and cache hits, in joules.",
+            ),
+            &["model"],
+        )
+        .expect("valid metric");
+
+        let cache_hits_total = IntCounterVec::new(
+            Opts::new(
+                "joule_cache_hits_total",
+                "Requests served from the exact-match cache (no inference).",
             ),
             &["model"],
         )
@@ -113,6 +123,9 @@ impl Metrics {
         registry
             .register(Box::new(energy_saved_joules_total.clone()))
             .expect("register");
+        registry
+            .register(Box::new(cache_hits_total.clone()))
+            .expect("register");
 
         Self {
             registry,
@@ -125,6 +138,7 @@ impl Metrics {
             latency_seconds,
             tokens_saved_total,
             energy_saved_joules_total,
+            cache_hits_total,
         }
     }
 
@@ -163,6 +177,16 @@ impl Metrics {
         self.latency_seconds
             .with_label_values(&[model])
             .observe(latency_secs);
+    }
+
+    /// Record a cache hit and the energy it avoided.
+    pub fn observe_cache_hit(&self, model: &str, energy_saved_j: f64) {
+        self.cache_hits_total.with_label_values(&[model]).inc();
+        if energy_saved_j > 0.0 {
+            self.energy_saved_joules_total
+                .with_label_values(&[model])
+                .inc_by(energy_saved_j);
+        }
     }
 
     /// Record prompt-optimization savings for a request.

@@ -111,14 +111,15 @@ Status: ✅ done · 🟡 partial · ⬜ planned
 ### Phase 1 — Measure
 - ✅ OpenAI-compatible proxy
 - ✅ request metrics (Prometheus)
-- ✅ token accounting (provider usage + heuristic fallback)
+- ✅ token accounting (provider usage + real BPE tokenizer fallback)
 - ✅ energy estimation (calibrated per-model profiles)
 - ✅ CLI (`serve`, `estimate`, `optimize`, `models`)
 
 ### Phase 2 — Optimize & cache
 - ✅ prompt optimization passes (composable, intensity-gated, explainable)
 - ✅ optimization reports (per-request headers + summaries)
-- ⬜ semantic cache (exact / embedding / semantic)
+- ✅ exact-match response cache (in-memory, LRU)
+- ⬜ semantic / embedding cache
 
 ### Phase 3 — Route
 - ✅ intelligent model routing (`static`, `model`, `greenest`)

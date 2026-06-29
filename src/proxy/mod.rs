@@ -17,6 +17,7 @@ use futures::StreamExt;
 use serde_json::{json, Value};
 use tracing::warn;
 
+use crate::cache::{Cache, CachedResponse};
 use crate::error::AppError;
 use crate::estimator::{EnergyEstimate, Estimator};
 use crate::metrics::Metrics;
@@ -25,7 +26,7 @@ use crate::provider::ProviderRegistry;
 use crate::router::Router;
 use crate::store::{RequestRecord, Store};
 use crate::tokens::{
-    approx_tokens, estimate_completion_tokens, estimate_prompt_tokens, TokenSource,
+    count_text_tokens, estimate_completion_tokens, estimate_prompt_tokens, TokenSource,
 };
 
 use openai::SseAccumulator;
@@ -40,6 +41,7 @@ pub struct AppState {
     pub registry: Arc<ProviderRegistry>,
     pub router: Arc<dyn Router>,
     pub optimizer: Arc<Optimizer>,
+    pub cache: Arc<Cache>,
 }
 
 /// Prompt-optimization outcome carried alongside a request.
@@ -141,6 +143,7 @@ async fn chat_completions(
     headers: HeaderMap,
     body: Bytes,
 ) -> Result<Response, AppError> {
+    let started = Instant::now();
     let mut request: Value = serde_json::from_slice(&body)
         .map_err(|e| AppError::new(StatusCode::BAD_REQUEST, format!("invalid JSON body: {e}")))?;
 
@@ -153,6 +156,19 @@ async fn chat_completions(
         .get("stream")
         .and_then(Value::as_bool)
         .unwrap_or(false);
+
+    // Exact-match cache: the cheapest inference is the one that never runs.
+    // Keyed on the original request; streaming requests are never cached.
+    let cache_key = if !is_stream && state.cache.enabled() {
+        Cache::key(&request)
+    } else {
+        None
+    };
+    if let Some(key) = &cache_key {
+        if let Some(hit) = state.cache.get(key) {
+            return Ok(cache_hit_response(&state, hit, started.elapsed()));
+        }
+    }
 
     // Optimize the prompt before anything else — the cheapest token is the one
     // we never send. Token estimates below are taken from the optimized request.
@@ -190,7 +206,6 @@ async fn chat_completions(
         .map_err(|e| AppError::new(StatusCode::BAD_REQUEST, e.to_string()))?;
     drop(decision);
 
-    let started = Instant::now();
     let response = request_builder
         .send()
         .await
@@ -213,6 +228,7 @@ async fn chat_completions(
         status,
         content_type,
         optimization,
+        cache_key,
     };
 
     if is_stream {
@@ -232,6 +248,8 @@ struct RequestCtx {
     status: u16,
     content_type: String,
     optimization: Optimization,
+    /// Cache key to store the response under on a miss (None = don't cache).
+    cache_key: Option<Vec<u8>>,
 }
 
 /// Handle a non-streaming upstream response: read it fully, translate it to
@@ -260,7 +278,7 @@ async fn buffered_response(
         Some((p, c)) => (p, c, TokenSource::Provider),
         None => (
             ctx.prompt_tokens_est,
-            estimate_completion_tokens(&translated),
+            estimate_completion_tokens(&ctx.model, &translated),
             TokenSource::Estimated,
         ),
     };
@@ -277,17 +295,84 @@ async fn buffered_response(
     );
 
     // Re-serialise the (possibly translated) body so clients see OpenAI shape.
-    let out_bytes = serde_json::to_vec(&translated)
-        .map_err(|e| AppError::new(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let out = Bytes::from(
+        serde_json::to_vec(&translated)
+            .map_err(|e| AppError::new(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?,
+    );
+
+    // Cache successful responses for exact-match reuse (skips inference next time).
+    if ctx.status == 200 {
+        if let Some(key) = ctx.cache_key.clone() {
+            state.cache.put(
+                key,
+                CachedResponse {
+                    status: ctx.status,
+                    content_type: ctx.content_type.clone(),
+                    body: out.clone(),
+                    model: ctx.model.clone(),
+                    input_tokens,
+                    output_tokens,
+                },
+            );
+        }
+    }
 
     let builder = Response::builder()
         .status(StatusCode::from_u16(ctx.status).unwrap_or(StatusCode::BAD_GATEWAY))
-        .header(CONTENT_TYPE, &ctx.content_type);
+        .header(CONTENT_TYPE, &ctx.content_type)
+        .header("x-joule-cache", "miss");
     let builder = with_joule_headers(builder, &estimate, source, false, &ctx);
 
     builder
-        .body(Body::from(out_bytes))
+        .body(Body::from(out))
         .map_err(|e| AppError::new(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
+}
+
+/// Serve a response from the exact-match cache: no upstream call, ~0 J. Records
+/// the avoided energy as a saving and tags the response so it's never invisible.
+fn cache_hit_response(state: &AppState, hit: CachedResponse, latency: Duration) -> Response {
+    let avoided = state
+        .estimator
+        .estimate(&hit.model, hit.input_tokens, hit.output_tokens);
+
+    state
+        .metrics
+        .observe_cache_hit(&hit.model, avoided.energy_j);
+
+    let record = RequestRecord {
+        ts: RequestRecord::now(),
+        model: hit.model.clone(),
+        input_tokens: hit.input_tokens,
+        output_tokens: hit.output_tokens,
+        latency_ms: latency.as_millis() as u64,
+        energy_j: 0.0,
+        electricity_wh: 0.0,
+        co2_g: 0.0,
+        cost_usd: 0.0,
+        status: hit.status,
+        streamed: false,
+        token_source: TokenSource::Cache.as_str().to_string(),
+        optimized: false,
+        tokens_saved: 0,
+        energy_saved_j: avoided.energy_j,
+        optimizations: "cache-hit".to_string(),
+    };
+    if let Err(e) = state.store.record(&record) {
+        warn!("failed to persist cache-hit record: {e}");
+    }
+
+    Response::builder()
+        .status(StatusCode::from_u16(hit.status).unwrap_or(StatusCode::OK))
+        .header(CONTENT_TYPE, &hit.content_type)
+        .header("x-joule-cache", "hit")
+        .header("x-joule-model", &hit.model)
+        .header("x-joule-energy-j", "0.0000")
+        .header("x-joule-energy-saved-j", format!("{:.4}", avoided.energy_j))
+        .header("x-joule-co2-saved-g", format!("{:.6}", avoided.co2_g))
+        .header("x-joule-cost-saved-usd", format!("{:.6}", avoided.cost_usd))
+        .header("x-joule-token-source", TokenSource::Cache.as_str())
+        .body(Body::from(hit.body))
+        .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
 }
 
 /// Handle a streaming upstream response: tee bytes to the client while
@@ -312,6 +397,7 @@ fn stream_response(
             ctx.optimization.tokens_saved.to_string(),
         )
         .header("x-joule-optimizations", &ctx.optimization.passes)
+        .header("x-joule-cache", "bypass")
         .header("x-joule-streamed", "true");
 
     let body = async_stream::stream! {
@@ -339,7 +425,7 @@ fn stream_response(
             Some((p, c)) => (p, c, TokenSource::Provider),
             None => (
                 ctx.prompt_tokens_est,
-                approx_tokens(acc.content()),
+                count_text_tokens(&ctx.model, acc.content()),
                 TokenSource::Estimated,
             ),
         };

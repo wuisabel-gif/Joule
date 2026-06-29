@@ -8,6 +8,7 @@ use anyhow::{Context, Result};
 use clap::ValueEnum;
 use serde::Deserialize;
 
+use crate::cache::Cache;
 use crate::estimator::{Estimator, DEFAULT_GRID_INTENSITY_G_PER_KWH};
 use crate::optimizer::{OptLevel, Optimizer};
 use crate::provider::{
@@ -62,6 +63,14 @@ fn default_grid() -> f64 {
     DEFAULT_GRID_INTENSITY_G_PER_KWH
 }
 
+fn default_cache() -> bool {
+    true
+}
+
+fn default_cache_capacity() -> usize {
+    1024
+}
+
 /// Full runtime configuration.
 #[derive(Debug, Clone, Deserialize)]
 pub struct Config {
@@ -76,6 +85,12 @@ pub struct Config {
     /// Prompt-optimization intensity.
     #[serde(default)]
     pub optimize: OptLevel,
+    /// Exact-match response cache (on by default).
+    #[serde(default = "default_cache")]
+    pub cache: bool,
+    /// Maximum entries in the response cache.
+    #[serde(default = "default_cache_capacity")]
+    pub cache_capacity: usize,
     #[serde(default = "default_grid")]
     pub grid_intensity: f64,
 }
@@ -101,6 +116,8 @@ impl Config {
         kind: ProviderKind,
         router: RouterKind,
         optimize: OptLevel,
+        cache: bool,
+        cache_capacity: usize,
         grid_intensity: f64,
     ) -> Self {
         Config {
@@ -116,6 +133,8 @@ impl Config {
             router,
             greenest_candidates: Vec::new(),
             optimize,
+            cache,
+            cache_capacity,
             grid_intensity,
         }
     }
@@ -123,6 +142,11 @@ impl Config {
     /// Build the configured optimizer.
     pub fn optimizer(&self) -> Optimizer {
         Optimizer::new(self.optimize)
+    }
+
+    /// Build the configured response cache.
+    pub fn build_cache(&self) -> Cache {
+        Cache::new(self.cache, self.cache_capacity)
     }
 
     /// The resolved default provider name (first provider if unset).

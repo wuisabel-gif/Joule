@@ -53,6 +53,14 @@ pub struct ServeArgs {
     #[arg(long, value_enum, default_value_t = OptLevel::Lite)]
     pub optimize: OptLevel,
 
+    /// Disable the exact-match response cache (enabled by default).
+    #[arg(long)]
+    pub no_cache: bool,
+
+    /// Maximum entries in the response cache.
+    #[arg(long, env = "JOULE_CACHE_CAPACITY", default_value_t = 1024)]
+    pub cache_capacity: usize,
+
     /// API key injected when the client request omits credentials.
     #[arg(long, env = "JOULE_UPSTREAM_API_KEY")]
     pub api_key: Option<String>,
