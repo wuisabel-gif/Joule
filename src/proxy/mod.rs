@@ -24,6 +24,7 @@ use crate::metrics::Metrics;
 use crate::optimizer::Optimizer;
 use crate::provider::ProviderRegistry;
 use crate::router::Router;
+use crate::semantic::{prompt_text, SemanticCache};
 use crate::store::{RequestRecord, Store};
 use crate::tokens::{
     count_text_tokens, estimate_completion_tokens, estimate_prompt_tokens, TokenSource,
@@ -42,6 +43,7 @@ pub struct AppState {
     pub router: Arc<dyn Router>,
     pub optimizer: Arc<Optimizer>,
     pub cache: Arc<Cache>,
+    pub semantic: Option<Arc<SemanticCache>>,
 }
 
 /// Prompt-optimization outcome carried alongside a request.
@@ -166,7 +168,29 @@ async fn chat_completions(
     };
     if let Some(key) = &cache_key {
         if let Some(hit) = state.cache.get(key) {
-            return Ok(cache_hit_response(&state, hit, started.elapsed()));
+            return Ok(cache_hit_response(&state, hit, started.elapsed(), "hit"));
+        }
+    }
+
+    // Semantic cache: embed the prompt and reuse a near-identical past answer.
+    // Opt-in; one embedding call per non-cached request enables generation hits.
+    let mut semantic_embedding: Option<Vec<f32>> = None;
+    if !is_stream {
+        if let Some(sem) = &state.semantic {
+            if let Some(text) = prompt_text(&request) {
+                if let Some(emb) = sem.embed(&text).await {
+                    if let Some((sim, hit)) = sem.lookup(&emb) {
+                        tracing::info!(similarity = sim, "semantic cache hit");
+                        return Ok(cache_hit_response(
+                            &state,
+                            hit,
+                            started.elapsed(),
+                            "semantic",
+                        ));
+                    }
+                    semantic_embedding = Some(emb);
+                }
+            }
         }
     }
 
@@ -229,6 +253,7 @@ async fn chat_completions(
         content_type,
         optimization,
         cache_key,
+        semantic_embedding,
     };
 
     if is_stream {
@@ -250,6 +275,8 @@ struct RequestCtx {
     optimization: Optimization,
     /// Cache key to store the response under on a miss (None = don't cache).
     cache_key: Option<Vec<u8>>,
+    /// Prompt embedding to store in the semantic cache on a miss, if enabled.
+    semantic_embedding: Option<Vec<f32>>,
 }
 
 /// Handle a non-streaming upstream response: read it fully, translate it to
@@ -300,20 +327,21 @@ async fn buffered_response(
             .map_err(|e| AppError::new(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?,
     );
 
-    // Cache successful responses for exact-match reuse (skips inference next time).
+    // Cache successful responses for reuse — exact-match and (if enabled) semantic.
     if ctx.status == 200 {
+        let cached = CachedResponse {
+            status: ctx.status,
+            content_type: ctx.content_type.clone(),
+            body: out.clone(),
+            model: ctx.model.clone(),
+            input_tokens,
+            output_tokens,
+        };
         if let Some(key) = ctx.cache_key.clone() {
-            state.cache.put(
-                key,
-                CachedResponse {
-                    status: ctx.status,
-                    content_type: ctx.content_type.clone(),
-                    body: out.clone(),
-                    model: ctx.model.clone(),
-                    input_tokens,
-                    output_tokens,
-                },
-            );
+            state.cache.put(key, cached.clone());
+        }
+        if let (Some(sem), Some(emb)) = (&state.semantic, ctx.semantic_embedding.clone()) {
+            sem.put(emb, cached);
         }
     }
 
@@ -330,7 +358,12 @@ async fn buffered_response(
 
 /// Serve a response from the exact-match cache: no upstream call, ~0 J. Records
 /// the avoided energy as a saving and tags the response so it's never invisible.
-fn cache_hit_response(state: &AppState, hit: CachedResponse, latency: Duration) -> Response {
+fn cache_hit_response(
+    state: &AppState,
+    hit: CachedResponse,
+    latency: Duration,
+    kind: &str,
+) -> Response {
     let avoided = state
         .estimator
         .estimate(&hit.model, hit.input_tokens, hit.output_tokens);
@@ -355,7 +388,7 @@ fn cache_hit_response(state: &AppState, hit: CachedResponse, latency: Duration) 
         optimized: false,
         tokens_saved: 0,
         energy_saved_j: avoided.energy_j,
-        optimizations: "cache-hit".to_string(),
+        optimizations: format!("{kind}-cache-hit"),
     };
     if let Err(e) = state.store.record(&record) {
         warn!("failed to persist cache-hit record: {e}");
@@ -364,7 +397,7 @@ fn cache_hit_response(state: &AppState, hit: CachedResponse, latency: Duration) 
     Response::builder()
         .status(StatusCode::from_u16(hit.status).unwrap_or(StatusCode::OK))
         .header(CONTENT_TYPE, &hit.content_type)
-        .header("x-joule-cache", "hit")
+        .header("x-joule-cache", kind)
         .header("x-joule-model", &hit.model)
         .header("x-joule-energy-j", "0.0000")
         .header("x-joule-energy-saved-j", format!("{:.4}", avoided.energy_j))

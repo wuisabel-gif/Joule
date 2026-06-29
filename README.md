@@ -19,9 +19,10 @@ OpenAI-compatible API, and answers one question for every request:
 > How many joules did this response cost, and could it have been lower?
 
 This repository implements **Phase 1** (a transparent measuring proxy) plus the
-prompt-optimization, exact-match caching, and routing pieces of Phases 2–3.
-Semantic caching and carbon-aware scheduling are still ahead. See
-[`ROADMAP.md`](ROADMAP.md) for the full vision and phase-by-phase status.
+prompt-optimization, caching (exact + semantic), and routing (including
+carbon-aware) pieces of Phases 2–4. Live grid integration and carbon-aware
+*scheduling* are still ahead. See [`ROADMAP.md`](ROADMAP.md) for the full vision
+and phase-by-phase status.
 
 ## Why bother — the energy stack
 
@@ -33,7 +34,7 @@ research is still needed:
 | Layer | Technique | Typical impact | Joule today |
 |-------|-----------|----------------|-------------|
 | User | Better prompts | Fewer tokens generated | ✅ optimizer passes |
-| Application | Caching | Avoid repeated inference | ✅ exact-match (semantic next) |
+| Application | Caching | Avoid repeated inference | ✅ exact + semantic cache |
 | Agent | Better planning | Avoid unnecessary tool calls | — |
 | Model | Smaller / specialized models | Large energy savings | ✅ `greenest` router |
 | Inference | Quantization | Lower computation & memory | provider-side |
@@ -280,6 +281,15 @@ it); it is in-memory, bounded (LRU), and never caches streaming requests. Note
 that with `temperature > 0` a hit replays a prior sample verbatim — the intended
 behaviour of an exact-match cache.
 
+**Semantic cache** (opt-in, `--semantic-cache`) goes further: it embeds the
+prompt and reuses a past answer when cosine similarity clears a threshold
+(default 0.92), so *differently-worded but equivalent* prompts share one
+inference — "What is Newton's 2nd law?" and "explain Newton's second law"
+collapse to a single call (`x-joule-cache: semantic`). It needs an
+OpenAI-compatible embeddings endpoint (`--embed-model`, defaulting to the
+upstream); each non-cached request then pays one small embedding call to enable
+the larger generation hits.
+
 ## Providers & routing (plugins)
 
 Joule dispatches each request through two pluggable layers:
@@ -376,6 +386,8 @@ joule models
 | `--optimize` | — | `lite` | `off`, `lite`, `full`, or `ultra` |
 | `--no-cache` | — | off (cache on) | disable the exact-match response cache |
 | `--cache-capacity` | `JOULE_CACHE_CAPACITY` | `1024` | max cached responses (LRU) |
+| `--semantic-cache` | — | off | enable embedding-similarity cache |
+| `--embed-model` | — | `text-embedding-3-small` | embeddings model for semantic cache |
 | `--api-key` | `JOULE_UPSTREAM_API_KEY` | — | fallback credential |
 | `--db` | `JOULE_DB` | `joule.db` | SQLite request log |
 | `--grid-intensity` | `JOULE_GRID_INTENSITY` | `445` | g CO₂ / kWh (IEA 2024 global avg) |

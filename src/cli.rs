@@ -74,6 +74,15 @@ pub struct ServeArgs {
     #[arg(long, env = "JOULE_CACHE_CAPACITY", default_value_t = 1024)]
     pub cache_capacity: usize,
 
+    /// Enable the semantic (embedding-similarity) cache. Needs an embeddings
+    /// endpoint (defaults to the upstream).
+    #[arg(long)]
+    pub semantic_cache: bool,
+
+    /// Embeddings model for the semantic cache.
+    #[arg(long, default_value = "text-embedding-3-small")]
+    pub embed_model: String,
+
     /// API key injected when the client request omits credentials.
     #[arg(long, env = "JOULE_UPSTREAM_API_KEY")]
     pub api_key: Option<String>,

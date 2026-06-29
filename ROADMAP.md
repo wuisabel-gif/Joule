@@ -119,7 +119,7 @@ Status: ✅ done · 🟡 partial · ⬜ planned
 - ✅ prompt optimization passes (composable, intensity-gated, explainable)
 - ✅ optimization reports (per-request headers + summaries)
 - ✅ exact-match response cache (in-memory, LRU)
-- ⬜ semantic / embedding cache
+- ✅ semantic cache (embedding similarity; opt-in)
 
 ### Phase 3 — Route
 - ✅ intelligent model routing (`static`, `model`, `greenest`)

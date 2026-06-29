@@ -19,6 +19,7 @@ use crate::provider::{
     AnthropicProvider, GeminiProvider, OpenAiCompatibleProvider, Provider, ProviderRegistry,
 };
 use crate::router::{CarbonRouter, GreenestRouter, ModelRouter, Router, StaticRouter};
+use crate::semantic::SemanticCache;
 
 /// Which wire protocol a provider speaks.
 #[derive(Debug, Clone, Copy, Default, Deserialize, ValueEnum)]
@@ -80,6 +81,18 @@ fn default_cache_capacity() -> usize {
     1024
 }
 
+fn default_embed_model() -> String {
+    "text-embedding-3-small".to_string()
+}
+
+fn default_semantic_threshold() -> f64 {
+    0.92
+}
+
+fn default_semantic_capacity() -> usize {
+    512
+}
+
 /// Full runtime configuration.
 #[derive(Debug, Clone, Deserialize)]
 pub struct Config {
@@ -103,6 +116,21 @@ pub struct Config {
     /// Maximum entries in the response cache.
     #[serde(default = "default_cache_capacity")]
     pub cache_capacity: usize,
+    /// Semantic (embedding-similarity) cache (off by default; needs embeddings).
+    #[serde(default)]
+    pub semantic_cache: bool,
+    #[serde(default = "default_embed_model")]
+    pub embed_model: String,
+    /// Embeddings endpoint base URL (defaults to the default provider's).
+    #[serde(default)]
+    pub embed_base_url: Option<String>,
+    /// Embeddings API key (defaults to the default provider's).
+    #[serde(default)]
+    pub embed_api_key: Option<String>,
+    #[serde(default = "default_semantic_threshold")]
+    pub semantic_threshold: f64,
+    #[serde(default = "default_semantic_capacity")]
+    pub semantic_capacity: usize,
     #[serde(default = "default_grid")]
     pub grid_intensity: f64,
 }
@@ -130,6 +158,8 @@ impl Config {
         optimize: OptLevel,
         cache: bool,
         cache_capacity: usize,
+        semantic_cache: bool,
+        embed_model: String,
         grid_intensity: f64,
     ) -> Self {
         Config {
@@ -149,8 +179,45 @@ impl Config {
             optimize,
             cache,
             cache_capacity,
+            semantic_cache,
+            embed_model,
+            embed_base_url: None,
+            embed_api_key: None,
+            semantic_threshold: default_semantic_threshold(),
+            semantic_capacity: default_semantic_capacity(),
             grid_intensity,
         }
+    }
+
+    /// Build the semantic cache, if enabled. Falls back to the default
+    /// provider's endpoint and key for embeddings when not set explicitly.
+    pub fn build_semantic(&self, client: reqwest::Client) -> Option<SemanticCache> {
+        if !self.semantic_cache {
+            return None;
+        }
+        let default = self.default_provider_name();
+        let dp = self
+            .providers
+            .iter()
+            .find(|p| p.name == default)
+            .or_else(|| self.providers.first());
+        let base = self
+            .embed_base_url
+            .clone()
+            .or_else(|| dp.map(|p| p.base_url.clone()))
+            .unwrap_or_default();
+        let key = self
+            .embed_api_key
+            .clone()
+            .or_else(|| dp.and_then(|p| p.api_key.clone()));
+        Some(SemanticCache::new(
+            client,
+            base,
+            self.embed_model.clone(),
+            key,
+            self.semantic_threshold as f32,
+            self.semantic_capacity,
+        ))
     }
 
     /// Build the configured optimizer.

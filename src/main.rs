@@ -15,6 +15,7 @@ mod optimizer;
 mod provider;
 mod proxy;
 mod router;
+mod semantic;
 mod store;
 mod tokens;
 
@@ -69,15 +70,19 @@ async fn serve(args: ServeArgs) -> Result<()> {
             args.optimize,
             !args.no_cache,
             args.cache_capacity,
+            args.semantic_cache,
+            args.embed_model,
             args.grid_intensity,
         ),
     };
 
+    let client = reqwest::Client::new();
     let estimator = config.estimator();
     let registry = config.build_registry().context("building providers")?;
     let router_plugin = config.build_router(estimator);
     let optimizer = config.optimizer();
     let cache = config.build_cache();
+    let semantic = config.build_semantic(client.clone());
 
     let store = Store::open(&args.db).with_context(|| format!("opening database {}", args.db))?;
 
@@ -89,6 +94,7 @@ async fn serve(args: ServeArgs) -> Result<()> {
         router = router_plugin.name(),
         optimize = optimizer.level().as_str(),
         cache = cache.enabled(),
+        semantic_cache = semantic.is_some(),
         "joule proxy starting",
     );
     info!("metrics at /metrics, request log at /stats, health at /healthz");
@@ -97,11 +103,12 @@ async fn serve(args: ServeArgs) -> Result<()> {
         estimator,
         metrics: Arc::new(Metrics::new()),
         store: Arc::new(store),
-        client: reqwest::Client::new(),
+        client,
         registry: Arc::new(registry),
         router: Arc::from(router_plugin),
         optimizer: Arc::new(optimizer),
         cache: Arc::new(cache),
+        semantic: semantic.map(Arc::new),
     };
 
     let app = proxy::router(state);

@@ -23,6 +23,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **Carbon-aware router** (`--router carbon`) — routes to the provider whose
   `region` has the lowest grid carbon intensity, from a built-in regional table
   plus `carbon_overrides` (a live source is the next increment).
+- **Semantic cache** (`--semantic-cache`) — embeds the prompt and reuses a past
+  answer when cosine similarity clears a threshold, so differently-worded but
+  equivalent prompts share one inference. Opt-in; uses an OpenAI-compatible
+  embeddings endpoint (`--embed-model`, defaults to the upstream).
 
 ### Changed
 - `token_source` gains a `cache` value for cache-served responses.
