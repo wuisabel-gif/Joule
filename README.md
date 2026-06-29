@@ -40,7 +40,7 @@ research is still needed:
 | Serving | Batching & scheduling | Higher GPU utilization | provider-side |
 | Hardware | Efficient accelerators | Better performance per watt | provider-side |
 | Data center | Cooling & power optimization | Lower facility overhead | — |
-| Grid | Carbon-aware scheduling | Lower emissions | 🔜 Phase 4 |
+| Grid | Carbon-aware routing | Lower emissions | 🟡 `carbon` router (region-based; live next) |
 
 The cheapest token is the one you never generate. A few of these levers in more
 detail:
@@ -299,6 +299,8 @@ Joule dispatches each request through two pluggable layers:
   - `model` — the first provider that declares support for the requested model.
   - `greenest` — among configured candidate models, pick the lowest estimated
     energy and route there (energy-aware routing).
+  - `carbon` — among providers that support the model, route to the one whose
+    region has the lowest grid carbon intensity (carbon-aware routing).
 
 The chosen provider, model, and routing reason come back as
 `x-joule-provider`, `x-joule-model`, and `x-joule-route` headers.
@@ -331,6 +333,23 @@ For the `greenest` router, add a candidate list:
 { "router": "greenest", "greenest_candidates": ["claude-3-5-haiku", "gpt-4o-mini", "gemini-1.5-flash"] }
 ```
 
+For the `carbon` router, tag each provider with a `region` (and optionally
+override intensities). Joule routes to the cleanest region's provider:
+
+```json
+{
+  "router": "carbon",
+  "providers": [
+    { "name": "east",  "kind": "openai", "base_url": "...", "models": ["gpt-"], "region": "us-east" },
+    { "name": "hydro", "kind": "openai", "base_url": "...", "models": ["gpt-"], "region": "norway" }
+  ],
+  "carbon_overrides": { "us-east": 410 }
+}
+```
+
+Intensities come from a built-in regional table (override with `carbon_overrides`);
+a live ElectricityMaps/WattTime refresher is the next increment.
+
 > Streaming works for every provider: Anthropic and Gemini SSE events are
 > re-framed into OpenAI `chat.completion.chunk` frames (terminated with
 > `data: [DONE]`), so clients always get a consistent stream. The
@@ -353,7 +372,7 @@ joule models
 | `--config` | `JOULE_CONFIG` | — | JSON multi-provider config (overrides single-provider flags) |
 | `--upstream` | `JOULE_UPSTREAM` | `https://api.openai.com` | provider base URL |
 | `--provider-kind` | — | `openai` | `openai`, `anthropic`, or `gemini` |
-| `--router` | — | `static` | `static`, `model`, or `greenest` |
+| `--router` | — | `static` | `static`, `model`, `greenest`, or `carbon` |
 | `--optimize` | — | `lite` | `off`, `lite`, `full`, or `ultra` |
 | `--no-cache` | — | off (cache on) | disable the exact-match response cache |
 | `--cache-capacity` | `JOULE_CACHE_CAPACITY` | `1024` | max cached responses (LRU) |

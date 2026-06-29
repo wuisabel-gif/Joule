@@ -20,6 +20,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   streaming clients get a consistent format from any provider.
 - **`joule report`** — summarises the request log: totals, cache hits, top
   models by energy, and cumulative energy / CO₂ saved.
+- **Carbon-aware router** (`--router carbon`) — routes to the provider whose
+  `region` has the lowest grid carbon intensity, from a built-in regional table
+  plus `carbon_overrides` (a live source is the next increment).
 
 ### Changed
 - `token_source` gains a `cache` value for cache-served responses.

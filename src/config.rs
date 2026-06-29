@@ -4,17 +4,21 @@
 //! - a JSON config file (`--config`) for multi-provider / routed setups, or
 //! - the single-provider quickstart flags (`--upstream`, `--api-key`, …).
 
+use std::collections::HashMap;
+use std::sync::Arc;
+
 use anyhow::{Context, Result};
 use clap::ValueEnum;
 use serde::Deserialize;
 
 use crate::cache::Cache;
+use crate::carbon::CarbonMap;
 use crate::estimator::{Estimator, DEFAULT_GRID_INTENSITY_G_PER_KWH};
 use crate::optimizer::{OptLevel, Optimizer};
 use crate::provider::{
     AnthropicProvider, GeminiProvider, OpenAiCompatibleProvider, Provider, ProviderRegistry,
 };
-use crate::router::{GreenestRouter, ModelRouter, Router, StaticRouter};
+use crate::router::{CarbonRouter, GreenestRouter, ModelRouter, Router, StaticRouter};
 
 /// Which wire protocol a provider speaks.
 #[derive(Debug, Clone, Copy, Default, Deserialize, ValueEnum)]
@@ -40,6 +44,8 @@ pub enum RouterKind {
     Model,
     /// Lowest-energy candidate model.
     Greenest,
+    /// Provider whose region has the lowest grid carbon intensity.
+    Carbon,
 }
 
 /// One configured provider.
@@ -57,6 +63,9 @@ pub struct ProviderConfig {
     /// Anthropic API version (Anthropic providers only).
     #[serde(default)]
     pub anthropic_version: Option<String>,
+    /// Region key for carbon-aware routing (e.g. "us-west", "norway").
+    #[serde(default)]
+    pub region: Option<String>,
 }
 
 fn default_grid() -> f64 {
@@ -82,6 +91,9 @@ pub struct Config {
     /// Candidate models for the `greenest` router.
     #[serde(default)]
     pub greenest_candidates: Vec<String>,
+    /// Per-region carbon-intensity overrides (g CO₂/kWh) for the `carbon` router.
+    #[serde(default)]
+    pub carbon_overrides: HashMap<String, f64>,
     /// Prompt-optimization intensity.
     #[serde(default)]
     pub optimize: OptLevel,
@@ -128,10 +140,12 @@ impl Config {
                 api_key,
                 models: Vec::new(),
                 anthropic_version: None,
+                region: None,
             }],
             default_provider: Some("default".to_string()),
             router,
             greenest_candidates: Vec::new(),
+            carbon_overrides: HashMap::new(),
             optimize,
             cache,
             cache_capacity,
@@ -205,6 +219,15 @@ impl Config {
                 estimator,
                 default,
             )),
+            RouterKind::Carbon => {
+                let carbon = Arc::new(CarbonMap::new(self.grid_intensity, &self.carbon_overrides));
+                let regions = self
+                    .providers
+                    .iter()
+                    .filter_map(|p| p.region.clone().map(|r| (p.name.clone(), r)))
+                    .collect();
+                Box::new(CarbonRouter::new(carbon, regions, default))
+            }
         }
     }
 }

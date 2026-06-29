@@ -9,6 +9,10 @@
 //! - [`GreenestRouter`] — among configured candidate models, pick the one with
 //!   the lowest estimated energy and route to a provider that serves it.
 
+use std::collections::HashMap;
+use std::sync::Arc;
+
+use crate::carbon::CarbonMap;
 use crate::estimator::Estimator;
 use crate::provider::{Provider, ProviderRegistry};
 
@@ -178,6 +182,80 @@ impl Router for GreenestRouter {
     }
 }
 
+/// Carbon-aware router: among providers that support the requested model, route
+/// to the one whose region has the lowest current grid carbon intensity. The
+/// intensity map can be refreshed at runtime from a live source.
+pub struct CarbonRouter {
+    carbon: Arc<CarbonMap>,
+    /// Provider name → region key.
+    regions: HashMap<String, String>,
+    default: String,
+}
+
+impl CarbonRouter {
+    pub fn new(carbon: Arc<CarbonMap>, regions: HashMap<String, String>, default: String) -> Self {
+        Self {
+            carbon,
+            regions,
+            default,
+        }
+    }
+
+    fn region_of(&self, provider: &str) -> &str {
+        self.regions.get(provider).map(String::as_str).unwrap_or("")
+    }
+}
+
+impl Router for CarbonRouter {
+    fn name(&self) -> &str {
+        "carbon"
+    }
+
+    fn route<'a>(
+        &self,
+        registry: &'a ProviderRegistry,
+        model: &str,
+    ) -> Result<RouteDecision<'a>, String> {
+        // Pick the supporting provider whose region is cleanest right now.
+        let mut best: Option<(&'a dyn Provider, f64)> = None;
+        for provider in registry.iter() {
+            if !provider.supports_model(model) {
+                continue;
+            }
+            let gco2 = self.carbon.intensity(self.region_of(provider.name()));
+            if best.is_none_or(|(_, b)| gco2 < b) {
+                best = Some((provider, gco2));
+            }
+        }
+
+        if let Some((provider, gco2)) = best {
+            let region = self.region_of(provider.name());
+            return Ok(RouteDecision {
+                model: model.to_string(),
+                reason: format!(
+                    "carbon: {} @ ~{gco2:.0} gCO2/kWh{}",
+                    provider.name(),
+                    if region.is_empty() {
+                        String::new()
+                    } else {
+                        format!(" ({region})")
+                    }
+                ),
+                provider,
+            });
+        }
+
+        let provider = registry
+            .get(&self.default)
+            .ok_or_else(|| format!("no provider supports '{model}' and no default"))?;
+        Ok(RouteDecision {
+            provider,
+            model: model.to_string(),
+            reason: format!("carbon: fallback -> {}", provider.name()),
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -210,6 +288,32 @@ mod tests {
             "anthropic"
         );
         assert_eq!(r.route(&reg, "gpt-4o").unwrap().provider.name(), "openai");
+    }
+
+    #[test]
+    fn carbon_router_prefers_cleaner_region() {
+        // Two providers serving the same model, in different-carbon regions.
+        let dirty = OpenAiCompatibleProvider::new(
+            "dirty".into(),
+            "http://a".into(),
+            None,
+            vec!["gpt-".into()],
+        );
+        let clean = OpenAiCompatibleProvider::new(
+            "clean".into(),
+            "http://b".into(),
+            None,
+            vec!["gpt-".into()],
+        );
+        let reg = ProviderRegistry::new(vec![Box::new(dirty), Box::new(clean)], "dirty".into());
+
+        let carbon = Arc::new(CarbonMap::new(445.0, &HashMap::new()));
+        let mut regions = HashMap::new();
+        regions.insert("dirty".to_string(), "us-east".to_string()); // ~380
+        regions.insert("clean".to_string(), "norway".to_string()); // ~30
+        let r = CarbonRouter::new(carbon, regions, "dirty".into());
+
+        assert_eq!(r.route(&reg, "gpt-4o").unwrap().provider.name(), "clean");
     }
 
     #[test]

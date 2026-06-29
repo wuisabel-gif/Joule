@@ -5,6 +5,7 @@
 //! Requests are dispatched through pluggable provider and router components.
 
 mod cache;
+mod carbon;
 mod cli;
 mod config;
 mod error;

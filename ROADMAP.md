@@ -127,8 +127,9 @@ Status: ✅ done · 🟡 partial · ⬜ planned
 - ⬜ dashboard
 
 ### Phase 4 — Carbon-aware
-- ⬜ carbon-aware scheduling
-- ⬜ electricity grid integration
+- 🟡 carbon-aware routing (`carbon` router; region-based intensity table)
+- ⬜ live electricity-grid integration (ElectricityMaps / WattTime)
+- ⬜ carbon-aware scheduling (defer non-urgent work to cleaner times)
 - ⬜ automatic optimization recommendations
 
 ## Philosophy
