@@ -414,6 +414,13 @@ easier to live with:
 Different problems that often turn out to be the same pattern wearing different
 masks.
 
+## Contributing
+
+Contributions are welcome — new providers, routers, optimization passes, and
+energy-data improvements especially. See [CONTRIBUTING.md](CONTRIBUTING.md) for
+the dev setup and architecture, and please follow the
+[Code of Conduct](CODE_OF_CONDUCT.md).
+
 ## License
 
 Apache-2.0 — see [LICENSE](LICENSE).
