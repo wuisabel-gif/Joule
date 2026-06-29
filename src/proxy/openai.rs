@@ -1,9 +1,9 @@
 //! Incremental parser for Server-Sent Events streams.
 //!
-//! As streamed chunks arrive we forward them to the client untouched while
-//! accumulating just enough to account for tokens. Event *semantics* are
-//! delegated to the active [`Provider`] so the same framing logic serves
-//! OpenAI, Anthropic, and any future provider — they differ only in where the
+//! As streamed chunks arrive we account for tokens and return the parsed
+//! events, so the proxy can either forward them untouched (OpenAI-compatible)
+//! or re-frame them into OpenAI chunks (Anthropic, Gemini). Event *semantics*
+//! are delegated to the active [`Provider`] — they differ only in where the
 //! content and usage fields live within each event.
 
 use serde_json::Value;
@@ -25,26 +25,26 @@ pub struct SseAccumulator {
 
 impl SseAccumulator {
     /// Feed a raw chunk of stream bytes, using `provider` to interpret events.
-    pub fn feed(&mut self, chunk: &[u8], provider: &dyn Provider) {
+    /// Returns the parsed `data:` JSON events in this chunk (for re-framing).
+    pub fn feed(&mut self, chunk: &[u8], provider: &dyn Provider) -> Vec<Value> {
         self.buffer.push_str(&String::from_utf8_lossy(chunk));
 
+        let mut events = Vec::new();
         while let Some(idx) = self.buffer.find('\n') {
             let line: String = self.buffer.drain(..=idx).collect();
-            self.handle_line(line.trim_end(), provider);
+            if let Some(event) = self.handle_line(line.trim_end(), provider) {
+                events.push(event);
+            }
         }
+        events
     }
 
-    fn handle_line(&mut self, line: &str, provider: &dyn Provider) {
-        let Some(payload) = line.strip_prefix("data:") else {
-            return;
-        };
-        let payload = payload.trim();
+    fn handle_line(&mut self, line: &str, provider: &dyn Provider) -> Option<Value> {
+        let payload = line.strip_prefix("data:")?.trim();
         if payload.is_empty() || payload == "[DONE]" {
-            return;
+            return None;
         }
-        let Ok(event) = serde_json::from_str::<Value>(payload) else {
-            return;
-        };
+        let event = serde_json::from_str::<Value>(payload).ok()?;
 
         if let Some(text) = provider.stream_content_delta(&event) {
             self.content.push_str(&text);
@@ -55,6 +55,7 @@ impl SseAccumulator {
         if let Some(c) = provider.stream_completion_tokens(&event) {
             self.completion = Some(c);
         }
+        Some(event)
     }
 
     /// Provider-reported usage, available only once both counts were seen.

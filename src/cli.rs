@@ -22,8 +22,21 @@ pub enum Command {
     Estimate(EstimateArgs),
     /// Optimize a prompt and show the energy it would save (a prompt improver).
     Optimize(OptimizeArgs),
+    /// Summarize the request log: totals, top models, and cumulative savings.
+    Report(ReportArgs),
     /// List the known model energy/price profiles.
     Models,
+}
+
+#[derive(Debug, Args)]
+pub struct ReportArgs {
+    /// Path to the SQLite request log.
+    #[arg(long, env = "JOULE_DB", default_value = "joule.db")]
+    pub db: String,
+
+    /// Grid carbon intensity for the saved-CO2 estimate (g CO2 / kWh).
+    #[arg(long, default_value_t = DEFAULT_GRID_INTENSITY_G_PER_KWH)]
+    pub grid_intensity: f64,
 }
 
 #[derive(Debug, Args)]

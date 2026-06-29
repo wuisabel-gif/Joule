@@ -26,7 +26,7 @@ use serde_json::json;
 use tracing::info;
 use tracing_subscriber::EnvFilter;
 
-use cli::{Cli, Command, EstimateArgs, OptimizeArgs, ServeArgs};
+use cli::{Cli, Command, EstimateArgs, OptimizeArgs, ReportArgs, ServeArgs};
 use config::Config;
 use estimator::{models, Estimator};
 use metrics::Metrics;
@@ -49,6 +49,7 @@ async fn main() -> Result<()> {
             Ok(())
         }
         Command::Optimize(args) => optimize(args),
+        Command::Report(args) => report(args),
         Command::Models => {
             list_models();
             Ok(())
@@ -177,6 +178,64 @@ fn optimize(args: OptimizeArgs) -> Result<()> {
             .and_then(|v| v.as_str())
         {
             println!("{content}");
+        }
+    }
+    Ok(())
+}
+
+fn report(args: ReportArgs) -> Result<()> {
+    let store = Store::open(&args.db).with_context(|| format!("opening database {}", args.db))?;
+    let t = store.totals()?;
+    let hits = store.cache_hits()?;
+    let models = store.model_breakdown()?;
+
+    // Savings are tracked in joules; derive Wh/kWh exactly and CO2 from the grid.
+    let saved_wh = t.energy_saved_j / 3600.0;
+    let saved_kwh = saved_wh / 1000.0;
+    let saved_co2_g = saved_kwh * args.grid_intensity;
+    let spent_wh = t.energy_j / 3600.0;
+
+    println!("Joule report — {}", args.db);
+    println!("{:-<52}", "");
+    println!("Requests:        {}", t.requests);
+    if t.requests > 0 {
+        println!(
+            "  cache hits:    {} ({:.0}%)",
+            hits,
+            hits as f64 / t.requests as f64 * 100.0
+        );
+    }
+    println!(
+        "Tokens:          {} in · {} out",
+        t.input_tokens, t.output_tokens
+    );
+    println!();
+    println!("Energy spent:    {:.1} J  ({:.4} Wh)", t.energy_j, spent_wh);
+    println!("CO2 emitted:     {:.3} g", t.co2_g);
+    println!("Cost:            ${:.4}", t.cost_usd);
+    println!();
+    println!("Tokens saved:    {}", t.tokens_saved);
+    println!(
+        "Energy saved:    {:.1} J  ({:.4} Wh / {:.6} kWh)",
+        t.energy_saved_j, saved_wh, saved_kwh
+    );
+    println!(
+        "CO2 avoided:     {:.3} g  (≈ at {:.0} g/kWh)",
+        saved_co2_g, args.grid_intensity
+    );
+
+    if !models.is_empty() {
+        println!();
+        println!("Top models by energy:");
+        println!(
+            "  {:<24} {:>8} {:>12} {:>10} {:>10}",
+            "MODEL", "REQS", "ENERGY(J)", "CO2(g)", "COST($)"
+        );
+        for m in models.iter().take(10) {
+            println!(
+                "  {:<24} {:>8} {:>12.1} {:>10.3} {:>10.4}",
+                m.model, m.requests, m.energy_j, m.co2_g, m.cost_usd
+            );
         }
     }
     Ok(())

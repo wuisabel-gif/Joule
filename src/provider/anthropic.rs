@@ -4,10 +4,9 @@
 //! `/v1/messages` format and maps the response back, so an OpenAI-speaking
 //! client can transparently reach Claude models through Joule.
 //!
-//! Non-streaming requests are fully translated in both directions. Streaming
-//! requests are forwarded in Anthropic's native SSE format (token accounting
-//! still works via the stream hooks); re-framing the stream into OpenAI's
-//! `chat.completion.chunk` events is a follow-up.
+//! Both non-streaming and streaming requests are translated in both directions:
+//! streaming events are re-framed into OpenAI `chat.completion.chunk` frames so
+//! clients see a consistent format.
 
 use axum::http::header::AUTHORIZATION;
 use axum::http::HeaderMap;
@@ -208,6 +207,33 @@ impl Provider for AnthropicProvider {
             .pointer("/usage/output_tokens")
             .and_then(Value::as_u64)
     }
+
+    fn reframes_stream(&self) -> bool {
+        true
+    }
+
+    fn stream_to_openai_chunk(&self, event: &Value, model: &str) -> Option<Value> {
+        match event.get("type").and_then(Value::as_str)? {
+            "message_start" => Some(super::openai_chunk(
+                model,
+                json!({ "role": "assistant" }),
+                None,
+            )),
+            "content_block_delta" => {
+                let text = event.pointer("/delta/text").and_then(Value::as_str)?;
+                Some(super::openai_chunk(model, json!({ "content": text }), None))
+            }
+            "message_delta" => {
+                let finish = match event.pointer("/delta/stop_reason").and_then(Value::as_str) {
+                    Some("end_turn") | Some("stop_sequence") => "stop",
+                    Some("max_tokens") => "length",
+                    _ => "stop",
+                };
+                Some(super::openai_chunk(model, json!({}), Some(finish)))
+            }
+            _ => None,
+        }
+    }
 }
 
 /// Extract plain text from an OpenAI `content` field (string or parts array).
@@ -274,5 +300,36 @@ mod tests {
         assert_eq!(out["choices"][0]["finish_reason"], "stop");
         assert_eq!(out["usage"]["prompt_tokens"], 12);
         assert_eq!(out["usage"]["total_tokens"], 15);
+    }
+
+    #[test]
+    fn reframes_stream_events_to_openai_chunks() {
+        let p = AnthropicProvider::new(
+            "anthropic".into(),
+            "https://api.anthropic.com".into(),
+            None,
+            vec![],
+            None,
+        );
+        assert!(p.reframes_stream());
+
+        let delta = json!({"type":"content_block_delta","delta":{"type":"text_delta","text":"Hi"}});
+        let c = p
+            .stream_to_openai_chunk(&delta, "claude-3-5-sonnet")
+            .unwrap();
+        assert_eq!(c["object"], "chat.completion.chunk");
+        assert_eq!(c["choices"][0]["delta"]["content"], "Hi");
+        assert!(c["choices"][0]["finish_reason"].is_null());
+
+        let stop = json!({"type":"message_delta","delta":{"stop_reason":"end_turn"}});
+        let c = p
+            .stream_to_openai_chunk(&stop, "claude-3-5-sonnet")
+            .unwrap();
+        assert_eq!(c["choices"][0]["finish_reason"], "stop");
+
+        let ping = json!({"type":"ping"});
+        assert!(p
+            .stream_to_openai_chunk(&ping, "claude-3-5-sonnet")
+            .is_none());
     }
 }

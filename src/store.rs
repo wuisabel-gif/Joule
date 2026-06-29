@@ -189,6 +189,51 @@ impl Store {
         )
         .map_err(Into::into)
     }
+
+    /// Number of requests served from the cache (no inference).
+    pub fn cache_hits(&self) -> Result<u64> {
+        let conn = self.conn.lock().expect("store mutex");
+        let n: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM requests WHERE token_source = 'cache'",
+            [],
+            |row| row.get(0),
+        )?;
+        Ok(n as u64)
+    }
+
+    /// Per-model totals, ordered by energy spent (descending).
+    pub fn model_breakdown(&self) -> Result<Vec<ModelStat>> {
+        let conn = self.conn.lock().expect("store mutex");
+        let mut stmt = conn.prepare(
+            "SELECT model, COUNT(*),
+                    COALESCE(SUM(energy_j), 0), COALESCE(SUM(co2_g), 0), COALESCE(SUM(cost_usd), 0)
+             FROM requests GROUP BY model ORDER BY SUM(energy_j) DESC",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok(ModelStat {
+                model: row.get(0)?,
+                requests: row.get::<_, i64>(1)? as u64,
+                energy_j: row.get(2)?,
+                co2_g: row.get(3)?,
+                cost_usd: row.get(4)?,
+            })
+        })?;
+        let mut out = Vec::new();
+        for r in rows {
+            out.push(r?);
+        }
+        Ok(out)
+    }
+}
+
+/// Per-model aggregate, for the `report` command.
+#[derive(Debug, Clone)]
+pub struct ModelStat {
+    pub model: String,
+    pub requests: u64,
+    pub energy_j: f64,
+    pub co2_g: f64,
+    pub cost_usd: f64,
 }
 
 /// Lifetime aggregate totals for the `/stats` summary.

@@ -15,6 +15,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **Real tokenizer** — token counts now use BPE tokenization (tiktoken:
   `o200k_base` for newer OpenAI models, `cl100k_base` otherwise and as a close
   approximation for non-OpenAI models), replacing the ~4-chars/token heuristic.
+- **Streaming re-framing** — Anthropic and Gemini SSE streams are translated
+  into OpenAI `chat.completion.chunk` frames (terminated with `[DONE]`), so
+  streaming clients get a consistent format from any provider.
+- **`joule report`** — summarises the request log: totals, cache hits, top
+  models by energy, and cumulative energy / CO₂ saved.
 
 ### Changed
 - `token_source` gains a `cache` value for cache-served responses.

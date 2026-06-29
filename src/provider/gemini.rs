@@ -12,9 +12,9 @@
 //! - generation limits live under `generationConfig`;
 //! - usage is reported as `usageMetadata.{promptTokenCount,candidatesTokenCount}`.
 //!
-//! Non-streaming requests are fully translated in both directions. Streaming
-//! requests use `:streamGenerateContent?alt=sse` and are forwarded in Gemini's
-//! native SSE format (token accounting still works via the stream hooks).
+//! Both non-streaming and streaming requests are translated in both directions:
+//! streaming uses `:streamGenerateContent?alt=sse` and its events are re-framed
+//! into OpenAI `chat.completion.chunk` frames so clients see a consistent format.
 
 use axum::http::header::AUTHORIZATION;
 use axum::http::HeaderMap;
@@ -230,6 +230,30 @@ impl Provider for GeminiProvider {
         event
             .pointer("/usageMetadata/candidatesTokenCount")
             .and_then(Value::as_u64)
+    }
+
+    fn reframes_stream(&self) -> bool {
+        true
+    }
+
+    fn stream_to_openai_chunk(&self, event: &Value, model: &str) -> Option<Value> {
+        let text = event
+            .pointer("/candidates/0/content/parts/0/text")
+            .and_then(Value::as_str);
+        let finish = event
+            .pointer("/candidates/0/finishReason")
+            .and_then(Value::as_str)
+            .map(|r| match r {
+                "STOP" => "stop",
+                "MAX_TOKENS" => "length",
+                "SAFETY" | "RECITATION" => "content_filter",
+                _ => "stop",
+            });
+        match (text, finish) {
+            (None, None) => None,
+            (Some(t), f) => Some(super::openai_chunk(model, json!({ "content": t }), f)),
+            (None, Some(f)) => Some(super::openai_chunk(model, json!({}), Some(f))),
+        }
     }
 }
 

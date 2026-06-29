@@ -136,7 +136,7 @@ Luccioni et al. 2024; Samsi et al. 2023; and others).
 - **Metrics** — Prometheus exposition at `/metrics`, labelled by model.
 - **Request log** — every request is persisted to SQLite and summarised at
   `/stats`.
-- **CLI** — `serve`, `estimate`, `optimize`, and `models`.
+- **CLI** — `serve`, `estimate`, `optimize`, `report`, and `models`.
 
 Per-request results are also returned to the client as response headers:
 `x-joule-energy-j`, `x-joule-electricity-wh`, `x-joule-co2-g`,
@@ -331,16 +331,17 @@ For the `greenest` router, add a candidate list:
 { "router": "greenest", "greenest_candidates": ["claude-3-5-haiku", "gpt-4o-mini", "gemini-1.5-flash"] }
 ```
 
-> Streaming requests to the Anthropic and Gemini providers are forwarded in
-> their native SSE format (token accounting still works); re-framing the stream
-> into OpenAI `chat.completion.chunk` events is a follow-up. The
-> OpenAI-compatible provider streams OpenAI events natively.
+> Streaming works for every provider: Anthropic and Gemini SSE events are
+> re-framed into OpenAI `chat.completion.chunk` frames (terminated with
+> `data: [DONE]`), so clients always get a consistent stream. The
+> OpenAI-compatible provider streams its events through untouched.
 
 ## CLI
 
 ```sh
 joule estimate --model gpt-4o --input 1200 --output 400
 joule optimize --level full --model gpt-4o --text "Could you please help me"
+joule report                 # totals, cache hits, top models, energy saved
 joule models
 ```
 

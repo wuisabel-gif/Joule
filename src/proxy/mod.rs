@@ -405,19 +405,37 @@ fn stream_response(
             Some(p) => p,
             None => return,
         };
+        let reframe = provider.reframes_stream();
         let mut acc = SseAccumulator::default();
 
         while let Some(item) = upstream.next().await {
             match item {
                 Ok(chunk) => {
-                    acc.feed(&chunk, provider);
-                    yield Ok::<Bytes, std::io::Error>(chunk);
+                    let events = acc.feed(&chunk, provider);
+                    if reframe {
+                        // Translate native events into OpenAI chunks so clients
+                        // always get a consistent `chat.completion.chunk` stream.
+                        for ev in &events {
+                            if let Some(oc) = provider.stream_to_openai_chunk(ev, &ctx.model) {
+                                let line = format!(
+                                    "data: {}\n\n",
+                                    serde_json::to_string(&oc).unwrap_or_default()
+                                );
+                                yield Ok::<Bytes, std::io::Error>(Bytes::from(line));
+                            }
+                        }
+                    } else {
+                        yield Ok::<Bytes, std::io::Error>(chunk);
+                    }
                 }
                 Err(e) => {
                     yield Err(std::io::Error::other(e.to_string()));
                     break;
                 }
             }
+        }
+        if reframe {
+            yield Ok::<Bytes, std::io::Error>(Bytes::from("data: [DONE]\n\n"));
         }
 
         let latency = ctx.started.elapsed();

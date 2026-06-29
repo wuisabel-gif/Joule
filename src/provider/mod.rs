@@ -82,4 +82,31 @@ pub trait Provider: Send + Sync {
 
     /// Completion-token count carried by one streaming SSE event, if any.
     fn stream_completion_tokens(&self, event: &Value) -> Option<u64>;
+
+    /// Whether this provider's streaming events must be translated to OpenAI
+    /// `chat.completion.chunk` format. OpenAI-compatible providers stream
+    /// natively and leave this `false`.
+    fn reframes_stream(&self) -> bool {
+        false
+    }
+
+    /// Translate one parsed upstream SSE event into an OpenAI
+    /// `chat.completion.chunk`, or `None` to drop the event. Only called when
+    /// [`Provider::reframes_stream`] is true.
+    fn stream_to_openai_chunk(&self, event: &Value, model: &str) -> Option<Value> {
+        let _ = (event, model);
+        None
+    }
+}
+
+/// Build an OpenAI `chat.completion.chunk` with the given delta and optional
+/// finish reason. Shared by providers that re-frame their native streams.
+pub(crate) fn openai_chunk(model: &str, delta: Value, finish: Option<&str>) -> Value {
+    serde_json::json!({
+        "id": "chatcmpl-joule",
+        "object": "chat.completion.chunk",
+        "created": 0,
+        "model": model,
+        "choices": [{ "index": 0, "delta": delta, "finish_reason": finish }],
+    })
 }
