@@ -465,7 +465,7 @@
       </div>
 
       <a class="whatsnew" href="https://github.com/wuisabel-gif/Joule/releases/latest">
-        <span class="tag">v0.3.0</span> New — response caching, carbon-aware routing &amp; upstream resilience <span class="arr">→</span>
+        <span class="tag">v0.4.0</span> New — complexity-aware routing &amp; a live grid carbon feed <span class="arr">→</span>
       </a>
 
       <div class="readout" role="img" aria-label="Example: a request estimated at 1820 joules, reduced to 1074 joules — a 41 percent reduction.">
@@ -576,7 +576,7 @@
             <div class="mod"><div class="mh"><i></i><span class="mn">Proxy</span></div><p class="md">Receives requests (OpenAI-compatible) with timeouts, retries, and per-provider circuit breaking.</p></div>
             <div class="mod"><div class="mh"><i></i><span class="mn">Optimizer</span></div><p class="md">Removes duplicated context, compresses prompts, trims verbosity, recommends output limits.</p></div>
             <div class="mod"><div class="mh"><i></i><span class="mn">Cache</span></div><p class="md">Avoids repeated inference — exact-match and semantic (embedding-similarity).</p></div>
-            <div class="mod"><div class="mh"><i></i><span class="mn">Router</span></div><p class="md">Selects a provider/model by support, estimated energy, or grid carbon intensity — static · model · greenest · carbon.</p></div>
+            <div class="mod"><div class="mh"><i></i><span class="mn">Router</span></div><p class="md">Selects a provider/model by support, estimated energy, grid carbon intensity (live-feed capable), or task complexity — static · model · greenest · carbon · complexity.</p></div>
             <div class="mod"><div class="mh"><i></i><span class="mn">Estimator</span></div><p class="md">Estimates energy from model, hardware, token count, and published benchmarks.</p></div>
             <div class="mod"><div class="mh"><i></i><span class="mn">Metrics</span></div><p class="md">Exports joules, CO₂, cost, and savings to Prometheus, with a SQLite request log — OpenTelemetry traces next.</p></div>
           </div>
@@ -668,10 +668,10 @@
           <div class="phase-h">
             <div class="pn">Phase 3</div>
             <h3>Route</h3>
-            <div class="phase-bar"><i style="width:85%"></i></div>
+            <div class="phase-bar"><i style="width:90%"></i></div>
           </div>
           <div class="tasks">
-            <div class="task" data-s="done"><span class="st">✓</span><span class="tx">Model routing — static · model · greenest · carbon</span><span class="tag">shipped</span></div>
+            <div class="task" data-s="done"><span class="st">✓</span><span class="tx">Model routing — static · model · greenest · carbon · complexity</span><span class="tag">shipped</span></div>
             <div class="task" data-s="done"><span class="st">✓</span><span class="tx">Multi-provider registry — OpenAI · Anthropic · Gemini</span><span class="tag">shipped</span></div>
             <div class="task" data-s="planned"><span class="st">○</span><span class="tx">Dashboard</span><span class="tag">planned</span></div>
           </div>
@@ -681,11 +681,11 @@
           <div class="phase-h">
             <div class="pn">Phase 4</div>
             <h3>Carbon-aware</h3>
-            <div class="phase-bar"><i style="width:30%"></i></div>
+            <div class="phase-bar"><i style="width:55%"></i></div>
           </div>
           <div class="tasks">
-            <div class="task" data-s="partial"><span class="st">◐</span><span class="tx">Carbon-aware routing — region-based</span><span class="tag">in progress</span></div>
-            <div class="task" data-s="planned"><span class="st">○</span><span class="tx">Live electricity-grid integration</span><span class="tag">planned</span></div>
+            <div class="task" data-s="done"><span class="st">✓</span><span class="tx">Carbon-aware routing — region-based</span><span class="tag">shipped</span></div>
+            <div class="task" data-s="done"><span class="st">✓</span><span class="tx">Live electricity-grid integration — UK, CO2 Signal, Electricity Maps</span><span class="tag">shipped</span></div>
             <div class="task" data-s="planned"><span class="st">○</span><span class="tx">Carbon-aware scheduling</span><span class="tag">planned</span></div>
             <div class="task" data-s="planned"><span class="st">○</span><span class="tx">Automatic optimization recommendations</span><span class="tag">planned</span></div>
           </div>
@@ -746,7 +746,7 @@
         </div>
       </div>
       <div class="foot-note">
-        <small>v0.3.0 · © 2026 Joule contributors · Apache-2.0 · Energy figures are calibrated estimates, not meter readings.</small>
+        <small>v0.4.0 · © 2026 Joule contributors · Apache-2.0 · Energy figures are calibrated estimates, not meter readings.</small>
         <span class="saver" title="Animation pauses when off-screen or in a background tab"><span class="pulse" aria-hidden="true"></span>This page pauses its animation when you look away — to save a few joules.</span>
       </div>
     </div>
