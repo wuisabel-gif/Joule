@@ -13,7 +13,7 @@ use clap::ValueEnum;
 use serde::Deserialize;
 
 use crate::cache::Cache;
-use crate::carbon::CarbonMap;
+use crate::carbon::{CarbonFeed, CarbonMap, CarbonSourceKind};
 use crate::estimator::{Estimator, DEFAULT_GRID_INTENSITY_G_PER_KWH};
 use crate::optimizer::{OptLevel, Optimizer};
 use crate::provider::{
@@ -123,6 +123,18 @@ fn default_complexity_max_simple_tokens() -> usize {
     240
 }
 
+fn default_carbon_poll_secs() -> u64 {
+    300
+}
+
+/// Environment variable holding the live carbon-feed auth token (kept out of
+/// config files so it never lands in version control).
+const CARBON_TOKEN_ENV: &str = "JOULE_CARBON_TOKEN";
+
+/// A ready-to-run carbon feed: the source, the `(region, zone)` pairs to poll,
+/// and the polling interval.
+pub type CarbonFeedPlan = (CarbonFeed, Vec<(String, String)>, Duration);
+
 /// Full runtime configuration.
 #[derive(Debug, Clone, Deserialize)]
 pub struct Config {
@@ -137,6 +149,24 @@ pub struct Config {
     /// Per-region carbon-intensity overrides (g CO₂/kWh) for the `carbon` router.
     #[serde(default)]
     pub carbon_overrides: HashMap<String, f64>,
+    /// Optional live carbon feed. When unset, the `carbon` router uses the
+    /// static table only. When set, a background poller refreshes intensities.
+    #[serde(default)]
+    pub carbon_source: Option<CarbonSourceKind>,
+    /// Override the feed's API base URL (defaults per source).
+    #[serde(default)]
+    pub carbon_source_url: Option<String>,
+    /// Feed auth token. Prefer the `JOULE_CARBON_TOKEN` env var — a token in a
+    /// config file risks being committed. The env var wins if both are set.
+    #[serde(default)]
+    pub carbon_source_token: Option<String>,
+    /// Region key → source zone code (e.g. "norway" → "NO"). The UK source
+    /// ignores zones (national) and defaults to refreshing the "uk" region.
+    #[serde(default)]
+    pub carbon_zones: HashMap<String, String>,
+    /// How often to refresh the live carbon feed, seconds.
+    #[serde(default = "default_carbon_poll_secs")]
+    pub carbon_poll_secs: u64,
     /// Model for simple tasks under the `complexity` router.
     #[serde(default)]
     pub complexity_simple: Option<String>,
@@ -232,6 +262,11 @@ impl Config {
             router,
             greenest_candidates: Vec::new(),
             carbon_overrides: HashMap::new(),
+            carbon_source: None,
+            carbon_source_url: None,
+            carbon_source_token: None,
+            carbon_zones: HashMap::new(),
+            carbon_poll_secs: default_carbon_poll_secs(),
             complexity_simple: None,
             complexity_complex: None,
             complexity_max_simple_tokens: default_complexity_max_simple_tokens(),
@@ -358,8 +393,61 @@ impl Config {
         ))
     }
 
-    /// Instantiate the configured routing policy.
-    pub fn build_router(&self, estimator: Estimator) -> Box<dyn Router> {
+    /// The shared carbon-intensity map (static table + overrides). The `carbon`
+    /// router reads it and the live feed poller writes it, so both must share
+    /// the same instance.
+    pub fn build_carbon_map(&self) -> Arc<CarbonMap> {
+        Arc::new(CarbonMap::new(self.grid_intensity, &self.carbon_overrides))
+    }
+
+    /// Build the live carbon feed and its zone list, if one is configured.
+    /// Returns the feed, the `(region, zone)` pairs to poll, and the interval.
+    /// The token is read from `JOULE_CARBON_TOKEN` (preferred) or config;
+    /// returns `None` (static table only) if a required token is missing or no
+    /// zones can be determined.
+    pub fn build_carbon_feed(&self, client: reqwest::Client) -> Option<CarbonFeedPlan> {
+        let kind = self.carbon_source?;
+
+        let token = std::env::var(CARBON_TOKEN_ENV)
+            .ok()
+            .filter(|s| !s.is_empty())
+            .or_else(|| self.carbon_source_token.clone());
+        if kind.needs_token() && token.is_none() {
+            tracing::warn!(
+                source = ?kind,
+                "carbon_source set but no token ({CARBON_TOKEN_ENV} or carbon_source_token); \
+                 using the static carbon table",
+            );
+            return None;
+        }
+
+        // Determine which (region, zone) pairs to poll.
+        let mut zones: Vec<(String, String)> = self
+            .carbon_zones
+            .iter()
+            .map(|(region, zone)| (region.clone(), zone.clone()))
+            .collect();
+        if zones.is_empty() {
+            match kind {
+                // National feed: refresh the "uk" region by default.
+                CarbonSourceKind::Uk => zones.push(("uk".to_string(), "GB".to_string())),
+                _ => {
+                    tracing::warn!(
+                        source = ?kind,
+                        "carbon_source set but carbon_zones is empty; using the static table",
+                    );
+                    return None;
+                }
+            }
+        }
+        zones.sort();
+
+        let feed = CarbonFeed::new(client, kind, self.carbon_source_url.clone(), token);
+        Some((feed, zones, Duration::from_secs(self.carbon_poll_secs)))
+    }
+
+    /// Instantiate the configured routing policy, sharing `carbon` with the feed.
+    pub fn build_router(&self, estimator: Estimator, carbon: Arc<CarbonMap>) -> Box<dyn Router> {
         let default = self.default_provider_name();
         match self.router {
             RouterKind::Static => Box::new(StaticRouter::new(default)),
@@ -370,7 +458,6 @@ impl Config {
                 default,
             )),
             RouterKind::Carbon => {
-                let carbon = Arc::new(CarbonMap::new(self.grid_intensity, &self.carbon_overrides));
                 let regions = self
                     .providers
                     .iter()

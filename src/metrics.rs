@@ -4,8 +4,8 @@
 //! latency — all labelled by model so per-model efficiency is observable.
 
 use prometheus::{
-    CounterVec, Encoder, HistogramOpts, HistogramVec, IntCounterVec, IntGaugeVec, Opts, Registry,
-    TextEncoder,
+    CounterVec, Encoder, GaugeVec, HistogramOpts, HistogramVec, IntCounterVec, IntGaugeVec, Opts,
+    Registry, TextEncoder,
 };
 
 /// All Joule metrics plus the registry that renders them.
@@ -23,6 +23,7 @@ pub struct Metrics {
     cache_hits_total: IntCounterVec,
     upstream_retries_total: IntCounterVec,
     circuit_open: IntGaugeVec,
+    grid_intensity: GaugeVec,
 }
 
 impl Metrics {
@@ -117,6 +118,15 @@ impl Metrics {
         )
         .expect("valid metric");
 
+        let grid_intensity = GaugeVec::new(
+            Opts::new(
+                "joule_grid_intensity_gco2_kwh",
+                "Grid carbon intensity per region (gCO2eq/kWh), from a live feed if configured.",
+            ),
+            &["region"],
+        )
+        .expect("valid metric");
+
         registry
             .register(Box::new(requests_total.clone()))
             .expect("register");
@@ -153,6 +163,9 @@ impl Metrics {
         registry
             .register(Box::new(circuit_open.clone()))
             .expect("register");
+        registry
+            .register(Box::new(grid_intensity.clone()))
+            .expect("register");
 
         Self {
             registry,
@@ -168,6 +181,7 @@ impl Metrics {
             cache_hits_total,
             upstream_retries_total,
             circuit_open,
+            grid_intensity,
         }
     }
 
@@ -244,6 +258,13 @@ impl Metrics {
                 .with_label_values(&[model])
                 .inc_by(energy_saved_j);
         }
+    }
+
+    /// Record the latest observed grid carbon intensity for a region.
+    pub fn set_grid_intensity(&self, region: &str, gco2_per_kwh: f64) {
+        self.grid_intensity
+            .with_label_values(&[region])
+            .set(gco2_per_kwh);
     }
 
     /// Render the registry in the Prometheus text exposition format.

@@ -21,9 +21,9 @@ OpenAI-compatible API, and answers one question for every request:
 
 This repository implements **Phase 1** (a transparent measuring proxy) plus the
 prompt-optimization, caching (exact + semantic), and routing (including
-carbon-aware) pieces of Phases 2–4. Live grid integration and carbon-aware
-*scheduling* are still ahead. See [`ROADMAP.md`](ROADMAP.md) for the full vision
-and phase-by-phase status.
+carbon-aware routing with a live grid feed) pieces of Phases 2–4. Carbon-aware
+*scheduling* (deferring flexible work to cleaner hours) is still ahead. See
+[`ROADMAP.md`](ROADMAP.md) for the full vision and phase-by-phase status.
 
 ## Why bother — the energy stack
 
@@ -42,7 +42,7 @@ research is still needed:
 | Serving | Batching & scheduling | Higher GPU utilization | provider-side |
 | Hardware | Efficient accelerators | Better performance per watt | provider-side |
 | Data center | Cooling & power optimization | Lower facility overhead | — |
-| Grid | Carbon-aware routing | Lower emissions | 🟡 `carbon` router (region-based; live next) |
+| Grid | Carbon-aware routing | Lower emissions | ✅ `carbon` router + live grid feed |
 
 The cheapest token is the one you never generate. A few of these levers in more
 detail:
@@ -370,8 +370,34 @@ override intensities). Joule routes to the cleanest region's provider:
 }
 ```
 
-Intensities come from a built-in regional table (override with `carbon_overrides`);
-a live ElectricityMaps/WattTime refresher is the next increment.
+Intensities come from a built-in regional table (override with `carbon_overrides`).
+For **live** routing, add a carbon feed — a background poller refreshes the table
+from a public API. Three sources are built in, and the feed degrades to the
+static table if it's unset or a fetch fails:
+
+```json
+{
+  "router": "carbon",
+  "carbon_source": "uk",
+  "carbon_zones": { "uk": "GB" },
+  "carbon_poll_secs": 300
+}
+```
+
+- `"uk"` — the free [UK Carbon Intensity API](https://carbonintensity.org.uk),
+  no token, national grid (great for trying the feed out).
+- `"co2signal"` — [CO2 Signal](https://www.co2signal.com), per country.
+- `"electricity_maps"` — [Electricity Maps](https://www.electricitymaps.com),
+  per zone.
+
+Token-based sources read the key from the `JOULE_CARBON_TOKEN` environment
+variable, so it never has to live in a config file:
+
+```bash
+JOULE_CARBON_TOKEN=… joule serve --config carbon.json
+```
+
+Latest values are exported as `joule_grid_intensity_gco2_kwh{region}`.
 
 For the `complexity` router, name a small and a capable model. Simple requests
 go to the small one; everything else to the capable one:

@@ -12,6 +12,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   model (`complexity_simple`) and everything else to a capable one
   (`complexity_complex`). Conservative: downgrades only when confident, to
   protect answer quality.
+- **Live carbon feed** for the `carbon` router — an optional background poller
+  refreshes grid intensities from a pluggable HTTP source, so routing follows
+  the grid in real time. Three sources are built in: the free **UK Carbon
+  Intensity API** (`"uk"`, no token), **CO2 Signal** (`"co2signal"`), and
+  **Electricity Maps** (`"electricity_maps"`). Configured via `carbon_source`,
+  `carbon_zones` (region → zone code), and `carbon_poll_secs`; the token comes
+  from `JOULE_CARBON_TOKEN` (kept out of config files). Degrades cleanly to the
+  static table when no feed is set or a required token is missing, and never
+  takes routing down on a fetch error. Latest values are exported as
+  `joule_grid_intensity_gco2_kwh{region}`.
 
 ### Changed
 - The `Router` trait now receives the full request, enabling content-aware

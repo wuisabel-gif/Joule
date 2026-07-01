@@ -85,13 +85,27 @@ async fn serve(args: ServeArgs) -> Result<()> {
         .context("building HTTP client")?;
     let estimator = config.estimator();
     let registry = config.build_registry().context("building providers")?;
-    let router_plugin = config.build_router(estimator);
+    let carbon_map = config.build_carbon_map();
+    let router_plugin = config.build_router(estimator, carbon_map.clone());
     let optimizer = config.optimizer();
     let cache = config.build_cache();
     let semantic = config.build_semantic(client.clone());
     let breakers = config.build_breakers();
 
     let store = Store::open(&args.db).with_context(|| format!("opening database {}", args.db))?;
+    let metrics = Arc::new(Metrics::new());
+
+    // If a live carbon feed is configured, refresh the shared carbon map in the
+    // background. Absent one, the `carbon` router uses the static table.
+    if let Some((feed, zones, interval)) = config.build_carbon_feed(client.clone()) {
+        info!(
+            source = ?feed.kind(),
+            zones = ?zones,
+            interval_s = interval.as_secs(),
+            "live carbon feed enabled",
+        );
+        carbon::spawn_poller(carbon_map.clone(), metrics.clone(), feed, zones, interval);
+    }
 
     let provider_names: Vec<&str> = registry.iter().map(|p| p.name()).collect();
     info!(
@@ -110,7 +124,7 @@ async fn serve(args: ServeArgs) -> Result<()> {
 
     let state = AppState {
         estimator,
-        metrics: Arc::new(Metrics::new()),
+        metrics,
         store: Arc::new(store),
         client,
         registry: Arc::new(registry),
