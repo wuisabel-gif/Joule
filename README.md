@@ -374,6 +374,30 @@ a live ElectricityMaps/WattTime refresher is the next increment.
 > `data: [DONE]`), so clients always get a consistent stream. The
 > OpenAI-compatible provider streams its events through untouched.
 
+## Resilience
+
+A flaky upstream shouldn't take Joule down with it. Every upstream call goes
+through three layers:
+
+- **Timeouts** — a connect timeout (`--connect-timeout`-ish, default 10s) fails
+  fast on an unreachable provider; a per-request timeout (`--timeout`, default
+  60s) bounds non-streaming calls (streams are exempt so long generations
+  aren't cut off).
+- **Retries** — transient failures (connection errors, timeouts, `5xx`, `429`)
+  are retried with exponential backoff, up to `--max-retries` (default 2).
+  Counted in `joule_upstream_retries_total`.
+- **Circuit breaker** — per provider. After `circuit_threshold` consecutive
+  failures (default 5) the breaker **opens**: requests fail fast with `503` and
+  `x-joule-circuit: open` — no upstream call — for `circuit_cooldown_secs`
+  (default 30s), then a trial request probes recovery. State is exported as
+  `joule_circuit_open{provider}` (1 = tripped).
+
+```
+# provider is failing → after the threshold, requests fail instantly:
+HTTP/1.1 503 Service Unavailable
+x-joule-circuit: open
+```
+
 ## CLI
 
 ```sh
@@ -397,6 +421,8 @@ joule models
 | `--cache-capacity` | `JOULE_CACHE_CAPACITY` | `1024` | max cached responses (LRU) |
 | `--semantic-cache` | — | off | enable embedding-similarity cache |
 | `--embed-model` | — | `text-embedding-3-small` | embeddings model for semantic cache |
+| `--timeout` | `JOULE_TIMEOUT` | `60` | per-request upstream timeout (s, non-streaming) |
+| `--max-retries` | `JOULE_MAX_RETRIES` | `2` | retries on transient upstream failure |
 | `--api-key` | `JOULE_UPSTREAM_API_KEY` | — | fallback credential |
 | `--db` | `JOULE_DB` | `joule.db` | SQLite request log |
 | `--grid-intensity` | `JOULE_GRID_INTENSITY` | `445` | g CO₂ / kWh (IEA 2024 global avg) |

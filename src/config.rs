@@ -6,6 +6,7 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::{Context, Result};
 use clap::ValueEnum;
@@ -18,6 +19,7 @@ use crate::optimizer::{OptLevel, Optimizer};
 use crate::provider::{
     AnthropicProvider, GeminiProvider, OpenAiCompatibleProvider, Provider, ProviderRegistry,
 };
+use crate::resilience::Breakers;
 use crate::router::{CarbonRouter, GreenestRouter, ModelRouter, Router, StaticRouter};
 use crate::semantic::SemanticCache;
 
@@ -93,6 +95,26 @@ fn default_semantic_capacity() -> usize {
     512
 }
 
+fn default_timeout_secs() -> u64 {
+    60
+}
+
+fn default_connect_timeout_secs() -> u64 {
+    10
+}
+
+fn default_max_retries() -> u32 {
+    2
+}
+
+fn default_circuit_threshold() -> u32 {
+    5
+}
+
+fn default_circuit_cooldown_secs() -> u64 {
+    30
+}
+
 /// Full runtime configuration.
 #[derive(Debug, Clone, Deserialize)]
 pub struct Config {
@@ -131,6 +153,21 @@ pub struct Config {
     pub semantic_threshold: f64,
     #[serde(default = "default_semantic_capacity")]
     pub semantic_capacity: usize,
+    /// Per-request upstream timeout (non-streaming), seconds.
+    #[serde(default = "default_timeout_secs")]
+    pub timeout_secs: u64,
+    /// Connection-establishment timeout, seconds.
+    #[serde(default = "default_connect_timeout_secs")]
+    pub connect_timeout_secs: u64,
+    /// Retries after a transient upstream failure (timeout / 5xx / 429).
+    #[serde(default = "default_max_retries")]
+    pub max_retries: u32,
+    /// Consecutive failures that trip a provider's circuit breaker.
+    #[serde(default = "default_circuit_threshold")]
+    pub circuit_threshold: u32,
+    /// How long a tripped breaker stays open before a trial request, seconds.
+    #[serde(default = "default_circuit_cooldown_secs")]
+    pub circuit_cooldown_secs: u64,
     #[serde(default = "default_grid")]
     pub grid_intensity: f64,
 }
@@ -160,6 +197,8 @@ impl Config {
         cache_capacity: usize,
         semantic_cache: bool,
         embed_model: String,
+        timeout_secs: u64,
+        max_retries: u32,
         grid_intensity: f64,
     ) -> Self {
         Config {
@@ -185,8 +224,32 @@ impl Config {
             embed_api_key: None,
             semantic_threshold: default_semantic_threshold(),
             semantic_capacity: default_semantic_capacity(),
+            timeout_secs,
+            connect_timeout_secs: default_connect_timeout_secs(),
+            max_retries,
+            circuit_threshold: default_circuit_threshold(),
+            circuit_cooldown_secs: default_circuit_cooldown_secs(),
             grid_intensity,
         }
+    }
+
+    /// Per-request upstream timeout.
+    pub fn timeout(&self) -> Duration {
+        Duration::from_secs(self.timeout_secs)
+    }
+
+    /// Connection-establishment timeout.
+    pub fn connect_timeout(&self) -> Duration {
+        Duration::from_secs(self.connect_timeout_secs)
+    }
+
+    /// Build a circuit breaker per configured provider.
+    pub fn build_breakers(&self) -> Breakers {
+        Breakers::new(
+            self.providers.iter().map(|p| p.name.clone()),
+            self.circuit_threshold,
+            Duration::from_secs(self.circuit_cooldown_secs),
+        )
     }
 
     /// Build the semantic cache, if enabled. Falls back to the default

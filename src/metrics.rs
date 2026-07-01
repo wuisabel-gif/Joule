@@ -4,7 +4,8 @@
 //! latency — all labelled by model so per-model efficiency is observable.
 
 use prometheus::{
-    CounterVec, Encoder, HistogramOpts, HistogramVec, IntCounterVec, Opts, Registry, TextEncoder,
+    CounterVec, Encoder, HistogramOpts, HistogramVec, IntCounterVec, IntGaugeVec, Opts, Registry,
+    TextEncoder,
 };
 
 /// All Joule metrics plus the registry that renders them.
@@ -20,6 +21,8 @@ pub struct Metrics {
     tokens_saved_total: IntCounterVec,
     energy_saved_joules_total: CounterVec,
     cache_hits_total: IntCounterVec,
+    upstream_retries_total: IntCounterVec,
+    circuit_open: IntGaugeVec,
 }
 
 impl Metrics {
@@ -96,6 +99,24 @@ impl Metrics {
         )
         .expect("valid metric");
 
+        let upstream_retries_total = IntCounterVec::new(
+            Opts::new(
+                "joule_upstream_retries_total",
+                "Upstream request retries after a transient failure.",
+            ),
+            &["provider"],
+        )
+        .expect("valid metric");
+
+        let circuit_open = IntGaugeVec::new(
+            Opts::new(
+                "joule_circuit_open",
+                "Circuit-breaker state per provider (1 = open/tripped, 0 = closed).",
+            ),
+            &["provider"],
+        )
+        .expect("valid metric");
+
         registry
             .register(Box::new(requests_total.clone()))
             .expect("register");
@@ -126,6 +147,12 @@ impl Metrics {
         registry
             .register(Box::new(cache_hits_total.clone()))
             .expect("register");
+        registry
+            .register(Box::new(upstream_retries_total.clone()))
+            .expect("register");
+        registry
+            .register(Box::new(circuit_open.clone()))
+            .expect("register");
 
         Self {
             registry,
@@ -139,6 +166,8 @@ impl Metrics {
             tokens_saved_total,
             energy_saved_joules_total,
             cache_hits_total,
+            upstream_retries_total,
+            circuit_open,
         }
     }
 
@@ -177,6 +206,20 @@ impl Metrics {
         self.latency_seconds
             .with_label_values(&[model])
             .observe(latency_secs);
+    }
+
+    /// Count an upstream retry after a transient failure.
+    pub fn inc_retry(&self, provider: &str) {
+        self.upstream_retries_total
+            .with_label_values(&[provider])
+            .inc();
+    }
+
+    /// Reflect a provider's circuit-breaker state (open = tripped).
+    pub fn set_circuit(&self, provider: &str, open: bool) {
+        self.circuit_open
+            .with_label_values(&[provider])
+            .set(open as i64);
     }
 
     /// Record a cache hit and the energy it avoided.

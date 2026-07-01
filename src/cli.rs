@@ -83,6 +83,14 @@ pub struct ServeArgs {
     #[arg(long, default_value = "text-embedding-3-small")]
     pub embed_model: String,
 
+    /// Per-request upstream timeout in seconds (non-streaming).
+    #[arg(long, env = "JOULE_TIMEOUT", default_value_t = 60)]
+    pub timeout: u64,
+
+    /// Retries after a transient upstream failure (timeout / 5xx / 429).
+    #[arg(long, env = "JOULE_MAX_RETRIES", default_value_t = 2)]
+    pub max_retries: u32,
+
     /// API key injected when the client request omits credentials.
     #[arg(long, env = "JOULE_UPSTREAM_API_KEY")]
     pub api_key: Option<String>,

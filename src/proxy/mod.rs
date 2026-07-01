@@ -9,12 +9,13 @@ use std::time::{Duration, Instant};
 use axum::body::{Body, Bytes};
 use axum::extract::State;
 use axum::http::header::{ACCEPT, CONTENT_TYPE};
-use axum::http::{HeaderMap, HeaderName, Method, StatusCode, Uri};
+use axum::http::{HeaderMap, HeaderName, HeaderValue, Method, StatusCode, Uri};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router as AxumRouter};
 use futures::StreamExt;
 use serde_json::{json, Value};
+use tokio::time::sleep;
 use tracing::warn;
 
 use crate::cache::{Cache, CachedResponse};
@@ -23,6 +24,7 @@ use crate::estimator::{EnergyEstimate, Estimator};
 use crate::metrics::Metrics;
 use crate::optimizer::Optimizer;
 use crate::provider::ProviderRegistry;
+use crate::resilience::Breakers;
 use crate::router::Router;
 use crate::semantic::{prompt_text, SemanticCache};
 use crate::store::{RequestRecord, Store};
@@ -44,6 +46,9 @@ pub struct AppState {
     pub optimizer: Arc<Optimizer>,
     pub cache: Arc<Cache>,
     pub semantic: Option<Arc<SemanticCache>>,
+    pub timeout: Duration,
+    pub max_retries: u32,
+    pub breakers: Arc<Breakers>,
 }
 
 /// Prompt-optimization outcome carried alongside a request.
@@ -230,10 +235,10 @@ async fn chat_completions(
         .map_err(|e| AppError::new(StatusCode::BAD_REQUEST, e.to_string()))?;
     drop(decision);
 
-    let response = request_builder
-        .send()
-        .await
-        .map_err(|e| AppError::upstream(format!("upstream request failed: {e}")))?;
+    let response = match resilient_send(&state, &provider_name, request_builder, is_stream).await {
+        Ok(r) => r,
+        Err(resp) => return Ok(resp),
+    };
 
     let status = response.status().as_u16();
     let content_type = response
@@ -512,11 +517,12 @@ async fn passthrough(
         rb = rb.header(ACCEPT, ac.clone());
     }
     rb = provider.authorize(rb, &headers).body(body.to_vec());
+    let pname = provider.name().to_string();
 
-    let response = rb
-        .send()
-        .await
-        .map_err(|e| AppError::upstream(format!("upstream request failed: {e}")))?;
+    let response = match resilient_send(&state, &pname, rb, false).await {
+        Ok(r) => r,
+        Err(resp) => return Ok(resp),
+    };
 
     let status = response.status().as_u16();
     let resp_headers = response.headers().clone();
@@ -569,6 +575,89 @@ fn with_joule_headers(
         )
         .header("x-joule-optimizations", &ctx.optimization.passes)
         .header("x-joule-streamed", streamed.to_string())
+}
+
+/// Send an upstream request with the resilience stack: circuit breaker →
+/// timeout → retries with backoff. Returns the upstream response, or a
+/// ready-to-return error response (fast-fail 503 when the breaker is open, or a
+/// 502 when retries are exhausted).
+async fn resilient_send(
+    state: &AppState,
+    provider: &str,
+    rb: reqwest::RequestBuilder,
+    is_stream: bool,
+) -> Result<reqwest::Response, Response> {
+    let breaker = state.breakers.get(provider);
+    if let Some(b) = breaker {
+        if !b.allow() {
+            state.metrics.set_circuit(provider, true);
+            return Err(circuit_open_response(provider));
+        }
+    }
+
+    let mut attempt: u32 = 0;
+    loop {
+        let mut req = rb.try_clone().expect("request body is cloneable");
+        if !is_stream {
+            req = req.timeout(state.timeout);
+        }
+        let outcome = req.send().await;
+        let failed = match &outcome {
+            Ok(resp) => is_retryable_status(resp.status().as_u16()),
+            Err(_) => true,
+        };
+
+        if failed && attempt < state.max_retries {
+            attempt += 1;
+            state.metrics.inc_retry(provider);
+            sleep(backoff(attempt)).await;
+            continue;
+        }
+
+        if let Some(b) = breaker {
+            if failed {
+                b.record_failure();
+            } else {
+                b.record_success();
+            }
+            state.metrics.set_circuit(provider, b.is_open());
+        }
+
+        return match outcome {
+            Ok(resp) => Ok(resp), // may be a 5xx we forward to the client
+            Err(e) => {
+                Err(AppError::upstream(format!("upstream request failed: {e}")).into_response())
+            }
+        };
+    }
+}
+
+/// 5xx and 429 are treated as transient (retry / count toward the breaker).
+fn is_retryable_status(status: u16) -> bool {
+    status == 429 || (500..=599).contains(&status)
+}
+
+/// Exponential backoff: ~400ms, 800ms, 1.6s, … capped at 3s.
+fn backoff(attempt: u32) -> Duration {
+    let ms = 200u64.saturating_mul(1u64 << attempt.min(4));
+    Duration::from_millis(ms.min(3000))
+}
+
+/// Fast-fail response returned while a provider's circuit breaker is open.
+fn circuit_open_response(provider: &str) -> Response {
+    let body = Json(json!({
+        "error": {
+            "message": format!("circuit open for provider '{provider}': upstream is failing, backing off"),
+            "type": "joule_circuit_open",
+        }
+    }));
+    let mut resp = (StatusCode::SERVICE_UNAVAILABLE, body).into_response();
+    let h = resp.headers_mut();
+    h.insert("x-joule-circuit", HeaderValue::from_static("open"));
+    if let Ok(v) = HeaderValue::from_str(provider) {
+        h.insert("x-joule-provider", v);
+    }
+    resp
 }
 
 /// Hop-by-hop headers that must not be copied to the downstream response.

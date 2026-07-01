@@ -14,6 +14,7 @@ mod metrics;
 mod optimizer;
 mod provider;
 mod proxy;
+mod resilience;
 mod router;
 mod semantic;
 mod store;
@@ -72,17 +73,23 @@ async fn serve(args: ServeArgs) -> Result<()> {
             args.cache_capacity,
             args.semantic_cache,
             args.embed_model,
+            args.timeout,
+            args.max_retries,
             args.grid_intensity,
         ),
     };
 
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .connect_timeout(config.connect_timeout())
+        .build()
+        .context("building HTTP client")?;
     let estimator = config.estimator();
     let registry = config.build_registry().context("building providers")?;
     let router_plugin = config.build_router(estimator);
     let optimizer = config.optimizer();
     let cache = config.build_cache();
     let semantic = config.build_semantic(client.clone());
+    let breakers = config.build_breakers();
 
     let store = Store::open(&args.db).with_context(|| format!("opening database {}", args.db))?;
 
@@ -95,6 +102,8 @@ async fn serve(args: ServeArgs) -> Result<()> {
         optimize = optimizer.level().as_str(),
         cache = cache.enabled(),
         semantic_cache = semantic.is_some(),
+        timeout_s = config.timeout_secs,
+        retries = config.max_retries,
         "joule proxy starting",
     );
     info!("metrics at /metrics, request log at /stats, health at /healthz");
@@ -109,6 +118,9 @@ async fn serve(args: ServeArgs) -> Result<()> {
         optimizer: Arc::new(optimizer),
         cache: Arc::new(cache),
         semantic: semantic.map(Arc::new),
+        timeout: config.timeout(),
+        max_retries: config.max_retries,
+        breakers: Arc::new(breakers),
     };
 
     let app = proxy::router(state);

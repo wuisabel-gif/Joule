@@ -7,6 +7,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- **Resilience** for upstream calls: connect + per-request **timeouts**
+  (`--timeout`), **retries** with exponential backoff on transient failures
+  (`--max-retries`; `joule_upstream_retries_total`), and a per-provider
+  **circuit breaker** that fails fast with `503` / `x-joule-circuit: open` after
+  repeated failures and probes recovery after a cooldown
+  (`joule_circuit_open{provider}`).
 - Optimizer `full` pass **`dedup-lines`** — drops duplicate identical lines in
   system prompts (repeated boilerplate instructions), leaving user content
   untouched.
