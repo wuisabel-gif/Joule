@@ -7,6 +7,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- Optimizer `full` pass **`dedup-lines`** — drops duplicate identical lines in
+  system prompts (repeated boilerplate instructions), leaving user content
+  untouched.
 - Optimizer `ultra` pass **`strip-reasoning`** — removes chain-of-thought
   triggers ("think step by step", "show your reasoning", …) that multiply output
   tokens.

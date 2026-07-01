@@ -16,6 +16,7 @@ pub fn default_passes() -> Vec<Box<dyn Pass>> {
         Box::new(CollapseWhitespace),
         Box::new(DedupMessages),
         Box::new(CollapseRepeatedLines),
+        Box::new(DedupSystemLines),
         Box::new(StripFiller),
         Box::new(StripReasoning),
         Box::new(EnforceOutputLimit { cap: 512 }),
@@ -147,6 +148,49 @@ impl Pass for CollapseRepeatedLines {
             out.join("\n")
         });
         (changed > 0).then(|| format!("collapsed repeated lines in {changed} message(s)"))
+    }
+}
+
+/// Within system messages, drop duplicate identical non-empty lines (keeping the
+/// first) — boilerplate instructions repeated across a long system prompt. Only
+/// system prompts are touched, so repeated data lines in user content are safe.
+struct DedupSystemLines;
+
+impl Pass for DedupSystemLines {
+    fn name(&self) -> &str {
+        "dedup-lines"
+    }
+    fn min_level(&self) -> OptLevel {
+        OptLevel::Full
+    }
+    fn apply(&self, request: &mut Value) -> Option<String> {
+        let messages = request.get_mut("messages").and_then(Value::as_array_mut)?;
+        let mut changed = 0;
+        for m in messages.iter_mut() {
+            if m.get("role").and_then(Value::as_str) != Some("system") {
+                continue;
+            }
+            let content = match m.get("content").and_then(Value::as_str) {
+                Some(c) => c.to_string(),
+                None => continue,
+            };
+            let mut seen: HashSet<&str> = HashSet::new();
+            let mut out: Vec<&str> = Vec::new();
+            for line in content.lines() {
+                let key = line.trim();
+                // Drop only exact repeats of a non-empty line; keep blanks.
+                if !key.is_empty() && !seen.insert(key) {
+                    continue;
+                }
+                out.push(line);
+            }
+            let next = out.join("\n");
+            if next != content {
+                m["content"] = json!(next);
+                changed += 1;
+            }
+        }
+        (changed > 0).then(|| format!("deduped repeated lines in {changed} system message(s)"))
     }
 }
 
@@ -328,6 +372,22 @@ mod tests {
         let pass = CollapseRepeatedLines;
         assert!(pass.apply(&mut req).is_some());
         assert_eq!(req["messages"][0]["content"], "a\nb\na");
+    }
+
+    #[test]
+    fn dedup_system_lines_drops_repeats_but_spares_user() {
+        let mut req = json!({"messages":[
+            {"role":"system","content":"Be helpful.\nBe helpful.\nUse metric units."},
+            {"role":"user","content":"row\nrow"}
+        ]});
+        let pass = DedupSystemLines;
+        assert!(pass.apply(&mut req).is_some());
+        assert_eq!(
+            req["messages"][0]["content"],
+            "Be helpful.\nUse metric units."
+        );
+        // user content untouched (repeated data lines are safe).
+        assert_eq!(req["messages"][1]["content"], "row\nrow");
     }
 
     #[test]

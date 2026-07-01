@@ -222,7 +222,7 @@ The cheapest token is the one you never generate. Joule optimizes the prompt
 |-------|--------|-----------|
 | `off` | none | — |
 | `lite` (default) | `collapse-whitespace`, `dedup-messages` | yes — formatting only |
-| `full` | + `collapse-repeated-lines`, `strip-filler` | yes — content cleanup |
+| `full` | + `collapse-repeated-lines`, `dedup-lines`, `strip-filler` | yes — content cleanup |
 | `ultra` | + `output-limit`, `strip-reasoning`, `brevity-hint` | no — changes model behaviour |
 
 `lite`/`full` only remove redundancy (whitespace, duplicate messages, repeated
@@ -232,9 +232,12 @@ lines, filler like "could you please"). `ultra` targets the biggest lever —
 (`strip-reasoning`), and asks the model to answer directly (`brevity-hint`).
 These change behaviour, so `ultra` is opt-in and every pass is reported.
 
-> Not automated on purpose: **stop sequences**. Auto-injecting a stop token
-> would truncate real answers, since Joule can't know the caller's intended
-> format — set those yourself per request.
+> Not automated on purpose: **stop sequences** (auto-injecting one truncates
+> real answers), **history truncation / summarization** (blind truncation loses
+> context; real summarization needs a model call), and **dropping few-shot
+> examples or retrieving only the relevant context** (that needs *memory /
+> retrieval* — the job of a sibling like MemWhale, not a stateless optimizer).
+> Joule only applies transforms it can make safely and explain.
 
 Nothing happens invisibly: each request returns `x-joule-optimized`,
 `x-joule-prompt-saved-tokens`, `x-joule-energy-saved-j`, and
