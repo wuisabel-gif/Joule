@@ -4,7 +4,7 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.3.0] — 2026-07-01
 
 ### Added
 - **Resilience** for upstream calls: connect + per-request **timeouts**
@@ -90,5 +90,6 @@ pieces of Phases 2–3.
   model batching, hardware generation, or data-center overhead.
 - No semantic cache or carbon-aware scheduling yet (Phases 2 and 4).
 
+[0.3.0]: https://github.com/wuisabel-gif/Joule/releases/tag/v0.3.0
 [0.2.0]: https://github.com/wuisabel-gif/Joule/releases/tag/v0.2.0
 [0.1.0]: https://github.com/wuisabel-gif/Joule/releases/tag/v0.1.0

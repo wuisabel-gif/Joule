@@ -1,6 +1,6 @@
 [package]
 name = "joule"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 description = "Energy-aware optimization middleware for LLM inference."
 license = "Apache-2.0"
