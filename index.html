@@ -172,6 +172,18 @@
   .btn .arr{transition:transform .2s var(--ease)}
   .btn:hover .arr{transform:translateX(3px)}
 
+  /* what's-new pill */
+  .whatsnew{
+    display:inline-flex;align-items:center;gap:10px;margin-top:var(--s-lg);
+    font:500 0.8rem/1.3 var(--mono);color:var(--ink-2);
+    padding:8px 14px;border:1px solid var(--line);border-radius:999px;background:var(--bg-2);
+    transition:border-color .2s var(--ease),color .2s var(--ease),transform .2s var(--ease);
+  }
+  .whatsnew:hover{border-color:var(--signal);color:var(--ink);transform:translateY(-1px)}
+  .whatsnew .tag{color:var(--bg);background:var(--signal);border-radius:999px;padding:3px 8px;font-weight:600;font-size:0.7rem;flex:none}
+  .whatsnew .arr{transition:transform .2s var(--ease)}
+  .whatsnew:hover .arr{transform:translateX(3px)}
+
   /* hero readout panel */
   .readout{
     margin-top:var(--s-2xl);max-width:560px;
@@ -451,6 +463,10 @@
         <a class="btn btn-primary" href="https://github.com/wuisabel-gif/Joule">Get it on GitHub <span class="arr">→</span></a>
         <a class="btn btn-ghost" href="#architecture">See the pipeline</a>
       </div>
+
+      <a class="whatsnew" href="https://github.com/wuisabel-gif/Joule/releases/latest">
+        <span class="tag">v0.3.0</span> New — response caching, carbon-aware routing &amp; upstream resilience <span class="arr">→</span>
+      </a>
 
       <div class="readout" role="img" aria-label="Example: a request estimated at 1820 joules, reduced to 1074 joules — a 41 percent reduction.">
         <div class="readout-top"><span>Inference&nbsp;·&nbsp;estimated energy</span><div class="dots" aria-hidden="true"><i></i><i></i><i></i></div></div>

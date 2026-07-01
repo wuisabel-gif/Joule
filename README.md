@@ -6,7 +6,8 @@
 <p align="center"><em>Energy-aware optimization for LLM inference</em></p>
 
 <p align="center">
-  <a href="https://github.com/wuisabel-gif/Joule/actions/workflows/ci.yml"><img src="https://github.com/wuisabel-gif/Joule/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/wuisabel-gif/Joule/releases/latest"><img src="https://img.shields.io/github/v/release/wuisabel-gif/Joule?color=2FE08A&label=release" alt="Latest release"></a>
+  &nbsp;<a href="https://github.com/wuisabel-gif/Joule/actions/workflows/ci.yml"><img src="https://github.com/wuisabel-gif/Joule/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   &nbsp;<a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-2FE08A.svg" alt="License: Apache-2.0"></a>
   &nbsp;<img src="https://img.shields.io/badge/Rust-1.96%2B-2FE08A.svg" alt="Rust">
 </p>
