@@ -17,6 +17,7 @@ pub fn default_passes() -> Vec<Box<dyn Pass>> {
         Box::new(DedupMessages),
         Box::new(CollapseRepeatedLines),
         Box::new(StripFiller),
+        Box::new(StripReasoning),
         Box::new(EnforceOutputLimit { cap: 512 }),
         Box::new(BrevityHint),
     ]
@@ -226,10 +227,53 @@ impl Pass for EnforceOutputLimit {
     }
 }
 
-/// Ask the model to be concise, reducing output tokens. Behaviour-affecting.
+/// Strip chain-of-thought triggers ("think step by step", "show your
+/// reasoning", …). These instructions multiply output tokens; removing them is
+/// a large output-side saving but can reduce accuracy on hard tasks, so it is
+/// Ultra-only.
+struct StripReasoning;
+
+/// Reasoning triggers to remove, longest/most-specific first so a shorter
+/// phrase doesn't leave a fragment of a longer one. Matched case-insensitively.
+const REASONING: &[&str] = &[
+    "let's think step by step",
+    "let us think step by step",
+    "walk me through your reasoning",
+    "walk through your reasoning",
+    "explain your reasoning",
+    "explain your thinking",
+    "show your reasoning",
+    "show your thinking",
+    "show your work",
+    "reason step by step",
+    "think step by step",
+    "think step-by-step",
+];
+
+impl Pass for StripReasoning {
+    fn name(&self) -> &str {
+        "strip-reasoning"
+    }
+    fn min_level(&self) -> OptLevel {
+        OptLevel::Ultra
+    }
+    fn apply(&self, request: &mut Value) -> Option<String> {
+        let changed = rewrite_messages(request, |s| {
+            let mut result = s.to_string();
+            for phrase in REASONING {
+                result = remove_ci(&result, phrase);
+            }
+            result
+        });
+        (changed > 0).then(|| format!("removed reasoning triggers in {changed} message(s)"))
+    }
+}
+
+/// Ask the model to answer directly, reducing output tokens. Behaviour-affecting.
 struct BrevityHint;
 
-const BREVITY: &str = "Be concise.";
+const BREVITY: &str =
+    "Answer concisely and directly — no preamble, no restating the question, only what was asked.";
 
 impl Pass for BrevityHint {
     fn name(&self) -> &str {
@@ -284,5 +328,21 @@ mod tests {
         let pass = CollapseRepeatedLines;
         assert!(pass.apply(&mut req).is_some());
         assert_eq!(req["messages"][0]["content"], "a\nb\na");
+    }
+
+    #[test]
+    fn strip_reasoning_removes_cot_triggers() {
+        let mut req = json!({"messages":[
+            {"role":"user","content":"Solve 12*13. Let's think step by step and show your work."}
+        ]});
+        let pass = StripReasoning;
+        assert!(pass.apply(&mut req).is_some());
+        let out = req["messages"][0]["content"]
+            .as_str()
+            .unwrap()
+            .to_lowercase();
+        assert!(!out.contains("step by step"));
+        assert!(!out.contains("show your work"));
+        assert!(out.contains("solve 12*13"));
     }
 }
