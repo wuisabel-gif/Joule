@@ -37,7 +37,7 @@ research is still needed:
 | User | Better prompts | Fewer tokens generated | ✅ optimizer passes |
 | Application | Caching | Avoid repeated inference | ✅ exact + semantic cache |
 | Agent | Better planning | Avoid unnecessary tool calls | — |
-| Model | Smaller / specialized models | Large energy savings | ✅ `greenest` router |
+| Model | Smaller / specialized models | Large energy savings | ✅ `greenest` + `complexity` routers |
 | Inference | Quantization | Lower computation & memory | provider-side |
 | Serving | Batching & scheduling | Higher GPU utilization | provider-side |
 | Hardware | Efficient accelerators | Better performance per watt | provider-side |
@@ -321,6 +321,9 @@ Joule dispatches each request through two pluggable layers:
     energy and route there (energy-aware routing).
   - `carbon` — among providers that support the model, route to the one whose
     region has the lowest grid carbon intensity (carbon-aware routing).
+  - `complexity` — send clearly-simple requests (translate, summarize, classify,
+    format, short prompts) to a small model and everything else to a capable one.
+    Conservative: it downgrades only when confident, to protect answer quality.
 
 The chosen provider, model, and routing reason come back as
 `x-joule-provider`, `x-joule-model`, and `x-joule-route` headers.
@@ -370,6 +373,13 @@ override intensities). Joule routes to the cleanest region's provider:
 Intensities come from a built-in regional table (override with `carbon_overrides`);
 a live ElectricityMaps/WattTime refresher is the next increment.
 
+For the `complexity` router, name a small and a capable model. Simple requests
+go to the small one; everything else to the capable one:
+
+```json
+{ "router": "complexity", "complexity_simple": "gpt-4o-mini", "complexity_complex": "gpt-4o" }
+```
+
 > Streaming works for every provider: Anthropic and Gemini SSE events are
 > re-framed into OpenAI `chat.completion.chunk` frames (terminated with
 > `data: [DONE]`), so clients always get a consistent stream. The
@@ -416,7 +426,7 @@ joule models
 | `--config` | `JOULE_CONFIG` | — | JSON multi-provider config (overrides single-provider flags) |
 | `--upstream` | `JOULE_UPSTREAM` | `https://api.openai.com` | provider base URL |
 | `--provider-kind` | — | `openai` | `openai`, `anthropic`, or `gemini` |
-| `--router` | — | `static` | `static`, `model`, `greenest`, or `carbon` |
+| `--router` | — | `static` | `static`, `model`, `greenest`, `carbon`, or `complexity` |
 | `--optimize` | — | `lite` | `off`, `lite`, `full`, or `ultra` |
 | `--no-cache` | — | off (cache on) | disable the exact-match response cache |
 | `--cache-capacity` | `JOULE_CACHE_CAPACITY` | `1024` | max cached responses (LRU) |

@@ -4,17 +4,21 @@
 //! implements the same [`Router`] trait, so swapping policy is a config change.
 //! Three are provided:
 //!
-//! - [`StaticRouter`]  — always the default provider (transparent proxy).
-//! - [`ModelRouter`]   — the first provider that declares support for the model.
-//! - [`GreenestRouter`] — among configured candidate models, pick the one with
-//!   the lowest estimated energy and route to a provider that serves it.
+//! - [`StaticRouter`]   — always the default provider (transparent proxy).
+//! - [`ModelRouter`]     — the first provider that declares support for the model.
+//! - [`GreenestRouter`]  — the candidate model with the lowest estimated energy.
+//! - [`CarbonRouter`]    — the provider whose region has the cleanest grid.
+//! - [`ComplexityRouter`] — a small model for simple tasks, a capable one otherwise.
 
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use serde_json::Value;
+
 use crate::carbon::CarbonMap;
 use crate::estimator::Estimator;
 use crate::provider::{Provider, ProviderRegistry};
+use crate::semantic::prompt_text;
 
 /// The outcome of routing: which provider to use, with what model, and why.
 pub struct RouteDecision<'a> {
@@ -28,11 +32,13 @@ pub trait Router: Send + Sync {
     /// Policy name, surfaced in the `x-joule-route` response header.
     fn name(&self) -> &str;
 
-    /// Choose a provider and model for a request that asked for `model`.
+    /// Choose a provider and model. `model` is what the client requested;
+    /// `request` is the full (optimized) chat request, for content-aware policies.
     fn route<'a>(
         &self,
         registry: &'a ProviderRegistry,
         model: &str,
+        request: &Value,
     ) -> Result<RouteDecision<'a>, String>;
 }
 
@@ -56,6 +62,7 @@ impl Router for StaticRouter {
         &self,
         registry: &'a ProviderRegistry,
         model: &str,
+        _request: &Value,
     ) -> Result<RouteDecision<'a>, String> {
         let provider = registry
             .get(&self.default)
@@ -89,6 +96,7 @@ impl Router for ModelRouter {
         &self,
         registry: &'a ProviderRegistry,
         model: &str,
+        _request: &Value,
     ) -> Result<RouteDecision<'a>, String> {
         if let Some(provider) = registry.supporting(model) {
             return Ok(RouteDecision {
@@ -140,6 +148,7 @@ impl Router for GreenestRouter {
         &self,
         registry: &'a ProviderRegistry,
         model: &str,
+        _request: &Value,
     ) -> Result<RouteDecision<'a>, String> {
         // Rank candidates served by some provider by estimated energy.
         let mut best: Option<(&'a dyn Provider, String, f64)> = None;
@@ -215,6 +224,7 @@ impl Router for CarbonRouter {
         &self,
         registry: &'a ProviderRegistry,
         model: &str,
+        _request: &Value,
     ) -> Result<RouteDecision<'a>, String> {
         // Pick the supporting provider whose region is cleanest right now.
         let mut best: Option<(&'a dyn Provider, f64)> = None;
@@ -256,6 +266,118 @@ impl Router for CarbonRouter {
     }
 }
 
+/// Complexity-aware router: send clearly-simple requests (translate, summarize,
+/// classify, format, short prompts) to a small model and everything else to a
+/// capable one. Applied conservatively — it downgrades only when confident the
+/// task is simple, defaulting to the capable model to protect answer quality.
+pub struct ComplexityRouter {
+    simple: Option<String>,
+    complex: Option<String>,
+    max_simple_tokens: usize,
+    default: String,
+}
+
+impl ComplexityRouter {
+    pub fn new(
+        simple: Option<String>,
+        complex: Option<String>,
+        max_simple_tokens: usize,
+        default: String,
+    ) -> Self {
+        Self {
+            simple,
+            complex,
+            max_simple_tokens,
+            default,
+        }
+    }
+}
+
+impl Router for ComplexityRouter {
+    fn name(&self) -> &str {
+        "complexity"
+    }
+
+    fn route<'a>(
+        &self,
+        registry: &'a ProviderRegistry,
+        model: &str,
+        request: &Value,
+    ) -> Result<RouteDecision<'a>, String> {
+        let text = prompt_text(request).unwrap_or_default();
+        let simple = looks_simple(&text, self.max_simple_tokens);
+        // Fall back to the requested model when a tier isn't configured, so an
+        // unconfigured tier never silently downgrades.
+        let (tier, chosen) = if simple {
+            (
+                "simple",
+                self.simple.clone().unwrap_or_else(|| model.to_string()),
+            )
+        } else {
+            (
+                "complex",
+                self.complex.clone().unwrap_or_else(|| model.to_string()),
+            )
+        };
+        let provider = registry
+            .supporting(&chosen)
+            .or_else(|| registry.get(&self.default))
+            .ok_or_else(|| format!("no provider supports '{chosen}' and no default"))?;
+        Ok(RouteDecision {
+            reason: format!("complexity: {tier} -> {chosen}"),
+            model: chosen,
+            provider,
+        })
+    }
+}
+
+/// Heuristic complexity check — true only when a request is *confidently* simple:
+/// short, carrying a simple-task signal, and free of any complexity signal.
+fn looks_simple(text: &str, max_simple_tokens: usize) -> bool {
+    // ~4 chars/token is enough for a length gate.
+    if text.chars().count() / 4 > max_simple_tokens {
+        return false;
+    }
+    let t = text.to_ascii_lowercase();
+
+    const COMPLEX: &[&str] = &[
+        "```",
+        "prove",
+        "derive",
+        "analyz",
+        "debug",
+        "refactor",
+        "algorithm",
+        "step by step",
+        "explain why",
+        "reason",
+        "theorem",
+        "architecture",
+        "trade-off",
+        "optimize",
+        "implement",
+    ];
+    if COMPLEX.iter().any(|k| t.contains(k)) {
+        return false;
+    }
+
+    const SIMPLE: &[&str] = &[
+        "translate",
+        "summar",
+        "classif",
+        "format",
+        "extract",
+        "spell",
+        "grammar",
+        "rewrite",
+        "tl;dr",
+        "label",
+        "categor",
+        "json",
+    ];
+    SIMPLE.iter().any(|k| t.contains(k))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -284,10 +406,19 @@ mod tests {
         let r = ModelRouter::new("openai".into());
         let reg = registry();
         assert_eq!(
-            r.route(&reg, "claude-3-opus").unwrap().provider.name(),
+            r.route(&reg, "claude-3-opus", &Value::Null)
+                .unwrap()
+                .provider
+                .name(),
             "anthropic"
         );
-        assert_eq!(r.route(&reg, "gpt-4o").unwrap().provider.name(), "openai");
+        assert_eq!(
+            r.route(&reg, "gpt-4o", &Value::Null)
+                .unwrap()
+                .provider
+                .name(),
+            "openai"
+        );
     }
 
     #[test]
@@ -313,7 +444,13 @@ mod tests {
         regions.insert("clean".to_string(), "norway".to_string()); // ~30
         let r = CarbonRouter::new(carbon, regions, "dirty".into());
 
-        assert_eq!(r.route(&reg, "gpt-4o").unwrap().provider.name(), "clean");
+        assert_eq!(
+            r.route(&reg, "gpt-4o", &Value::Null)
+                .unwrap()
+                .provider
+                .name(),
+            "clean"
+        );
     }
 
     #[test]
@@ -326,8 +463,32 @@ mod tests {
             "openai".into(),
         );
         let reg = registry();
-        let decision = r.route(&reg, "gpt-4").unwrap();
+        let decision = r.route(&reg, "gpt-4", &Value::Null).unwrap();
         assert_eq!(decision.model, "gpt-4o-mini");
         assert_eq!(decision.provider.name(), "openai");
+    }
+
+    #[test]
+    fn complexity_router_downgrades_only_simple_tasks() {
+        use serde_json::json;
+        let reg = registry(); // openai (gpt-), anthropic (claude)
+        let r = ComplexityRouter::new(
+            Some("gpt-4o-mini".into()),
+            Some("gpt-4o".into()),
+            240,
+            "openai".into(),
+        );
+
+        let simple = json!({"messages":[{"role":"user","content":"Translate 'hello' to French."}]});
+        let d = r.route(&reg, "gpt-4o", &simple).unwrap();
+        assert_eq!(d.model, "gpt-4o-mini"); // downgraded
+
+        let complex = json!({"messages":[{"role":"user","content":"Prove that sqrt(2) is irrational, step by step."}]});
+        let d = r.route(&reg, "gpt-4o", &complex).unwrap();
+        assert_eq!(d.model, "gpt-4o"); // kept capable
+
+        // No simple signal → treated as complex (conservative).
+        let plain = json!({"messages":[{"role":"user","content":"What time is it in Tokyo?"}]});
+        assert_eq!(r.route(&reg, "gpt-4o", &plain).unwrap().model, "gpt-4o");
     }
 }

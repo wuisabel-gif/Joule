@@ -211,7 +211,7 @@ async fn chat_completions(
     // the registry ends before we move state into a streaming response.
     let decision = state
         .router
-        .route(&state.registry, &requested_model)
+        .route(&state.registry, &requested_model, &request)
         .map_err(|e| AppError::new(StatusCode::BAD_GATEWAY, format!("routing failed: {e}")))?;
     let provider_name = decision.provider.name().to_string();
     let model = decision.model.clone();

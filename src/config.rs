@@ -20,7 +20,9 @@ use crate::provider::{
     AnthropicProvider, GeminiProvider, OpenAiCompatibleProvider, Provider, ProviderRegistry,
 };
 use crate::resilience::Breakers;
-use crate::router::{CarbonRouter, GreenestRouter, ModelRouter, Router, StaticRouter};
+use crate::router::{
+    CarbonRouter, ComplexityRouter, GreenestRouter, ModelRouter, Router, StaticRouter,
+};
 use crate::semantic::SemanticCache;
 
 /// Which wire protocol a provider speaks.
@@ -49,6 +51,8 @@ pub enum RouterKind {
     Greenest,
     /// Provider whose region has the lowest grid carbon intensity.
     Carbon,
+    /// Small model for simple tasks, capable model otherwise.
+    Complexity,
 }
 
 /// One configured provider.
@@ -115,6 +119,10 @@ fn default_circuit_cooldown_secs() -> u64 {
     30
 }
 
+fn default_complexity_max_simple_tokens() -> usize {
+    240
+}
+
 /// Full runtime configuration.
 #[derive(Debug, Clone, Deserialize)]
 pub struct Config {
@@ -129,6 +137,15 @@ pub struct Config {
     /// Per-region carbon-intensity overrides (g CO₂/kWh) for the `carbon` router.
     #[serde(default)]
     pub carbon_overrides: HashMap<String, f64>,
+    /// Model for simple tasks under the `complexity` router.
+    #[serde(default)]
+    pub complexity_simple: Option<String>,
+    /// Model for complex tasks under the `complexity` router.
+    #[serde(default)]
+    pub complexity_complex: Option<String>,
+    /// Max prompt tokens for a request to be considered "simple".
+    #[serde(default = "default_complexity_max_simple_tokens")]
+    pub complexity_max_simple_tokens: usize,
     /// Prompt-optimization intensity.
     #[serde(default)]
     pub optimize: OptLevel,
@@ -215,6 +232,9 @@ impl Config {
             router,
             greenest_candidates: Vec::new(),
             carbon_overrides: HashMap::new(),
+            complexity_simple: None,
+            complexity_complex: None,
+            complexity_max_simple_tokens: default_complexity_max_simple_tokens(),
             optimize,
             cache,
             cache_capacity,
@@ -358,6 +378,12 @@ impl Config {
                     .collect();
                 Box::new(CarbonRouter::new(carbon, regions, default))
             }
+            RouterKind::Complexity => Box::new(ComplexityRouter::new(
+                self.complexity_simple.clone(),
+                self.complexity_complex.clone(),
+                self.complexity_max_simple_tokens,
+                default,
+            )),
         }
     }
 }
