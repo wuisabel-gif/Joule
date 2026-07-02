@@ -7,9 +7,10 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use axum::body::{Body, Bytes};
-use axum::extract::State;
+use axum::extract::{Request, State};
 use axum::http::header::{ACCEPT, CONTENT_TYPE};
 use axum::http::{HeaderMap, HeaderName, HeaderValue, Method, StatusCode, Uri};
+use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router as AxumRouter};
@@ -49,6 +50,9 @@ pub struct AppState {
     pub timeout: Duration,
     pub max_retries: u32,
     pub breakers: Arc<Breakers>,
+    /// When set, clients must present this key in the `x-joule-key` header
+    /// (health checks excepted). None = open proxy (the default).
+    pub proxy_key: Option<Arc<str>>,
 }
 
 /// Prompt-optimization outcome carried alongside a request.
@@ -124,7 +128,52 @@ pub fn router(state: AppState) -> AxumRouter {
         .route("/stats", get(stats_handler))
         .route("/v1/chat/completions", post(chat_completions))
         .fallback(passthrough)
+        // `layer` (not `route_layer`) also wraps the fallback, so the
+        // key-spending passthrough is guarded too.
+        .layer(middleware::from_fn_with_state(state.clone(), require_key))
         .with_state(state)
+}
+
+/// Constant-time byte comparison, so a wrong `x-joule-key` doesn't leak its
+/// correct-prefix length through timing. Length is allowed to differ early.
+fn ct_eq(a: &[u8], b: &[u8]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    let mut diff = 0u8;
+    for (x, y) in a.iter().zip(b) {
+        diff |= x ^ y;
+    }
+    diff == 0
+}
+
+/// Gate every route except `/healthz` behind `x-joule-key` when a proxy key is
+/// configured. A separate header (not `Authorization`) so the client's upstream
+/// credentials still pass through untouched.
+async fn require_key(State(state): State<AppState>, req: Request, next: Next) -> Response {
+    let Some(expected) = state.proxy_key.as_deref() else {
+        return next.run(req).await; // open proxy
+    };
+    if req.uri().path() == "/healthz" {
+        return next.run(req).await;
+    }
+    let ok = req
+        .headers()
+        .get("x-joule-key")
+        .map(|v| ct_eq(v.as_bytes(), expected.as_bytes()))
+        .unwrap_or(false);
+    if ok {
+        next.run(req).await
+    } else {
+        (
+            StatusCode::UNAUTHORIZED,
+            Json(json!({ "error": {
+                "message": "missing or invalid x-joule-key",
+                "type": "joule_unauthorized",
+            }})),
+        )
+            .into_response()
+    }
 }
 
 async fn health() -> &'static str {

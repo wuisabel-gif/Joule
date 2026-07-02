@@ -71,11 +71,13 @@ async fn serve(args: ServeArgs) -> Result<()> {
             args.optimize,
             !args.no_cache,
             args.cache_capacity,
+            args.cache_ttl,
             args.semantic_cache,
             args.embed_model,
             args.timeout,
             args.max_retries,
             args.grid_intensity,
+            args.proxy_api_key,
         ),
     };
 
@@ -91,6 +93,7 @@ async fn serve(args: ServeArgs) -> Result<()> {
     let cache = config.build_cache();
     let semantic = config.build_semantic(client.clone());
     let breakers = config.build_breakers();
+    let proxy_key = config.proxy_key();
 
     let store = Store::open(&args.db).with_context(|| format!("opening database {}", args.db))?;
     let metrics = Arc::new(Metrics::new());
@@ -115,9 +118,11 @@ async fn serve(args: ServeArgs) -> Result<()> {
         router = router_plugin.name(),
         optimize = optimizer.level().as_str(),
         cache = cache.enabled(),
+        cache_ttl_s = config.cache_ttl_secs,
         semantic_cache = semantic.is_some(),
         timeout_s = config.timeout_secs,
         retries = config.max_retries,
+        auth = proxy_key.is_some(),
         "joule proxy starting",
     );
     info!("metrics at /metrics, request log at /stats, health at /healthz");
@@ -135,6 +140,7 @@ async fn serve(args: ServeArgs) -> Result<()> {
         timeout: config.timeout(),
         max_retries: config.max_retries,
         breakers: Arc::new(breakers),
+        proxy_key,
     };
 
     let app = proxy::router(state);

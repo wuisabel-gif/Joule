@@ -4,6 +4,27 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Cache TTL** (`--cache-ttl <seconds>`) — expires entries after a set age so a
+  cached answer to a time-sensitive prompt can't live forever. Applies to both
+  the exact-match and semantic caches; `0` (default) keeps the prior
+  evict-by-capacity-only behaviour.
+- **Proxy authentication** (`--proxy-api-key` / `JOULE_PROXY_API_KEY`) — when
+  set, every route except `/healthz` requires the key in the `x-joule-key`
+  header (constant-time compared; a separate header so upstream `Authorization`
+  still passes through). Closes the open-proxy gap where anyone reachable could
+  spend the upstream key. Off by default (unchanged behaviour).
+- **Grafana dashboard** ([`grafana/joule.json`](grafana/joule.json)) — import to
+  get energy, energy-saved, cache hit ratio, p95 latency, cost, grid intensity,
+  and circuit/retry panels from the exported Prometheus metrics.
+
+### Docs
+- README: honest scope for carbon routing (real when you control where inference
+  runs; an estimate for hosted APIs), a semantic-cache correctness caveat, and a
+  comparison with LiteLLM/OpenRouter.
+
 ## [0.4.0] — 2026-07-01
 
 ### Added

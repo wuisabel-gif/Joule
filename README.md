@@ -90,6 +90,26 @@ LLM
 Instead of asking only *"How many tokens?"*, Joule asks the broader question:
 *"Was this computation necessary?"*
 
+### How it compares
+
+Joule is an OpenAI-compatible proxy, so the obvious question is "why not
+LiteLLM or OpenRouter?" Those are excellent at what they do — multi-provider
+routing, key management, fallback. Joule overlaps there but exists for a
+different reason: **energy is the first-class metric.**
+
+| | LiteLLM / OpenRouter | Joule |
+|---|---|---|
+| Multi-provider proxy | ✅ | ✅ |
+| Cost tracking | ✅ | ✅ (+ estimated) |
+| **Energy / CO₂ per request** | — | ✅ headers, metrics, `/stats` |
+| **Savings attribution** (cache vs optimizer vs routing) | — | ✅ |
+| **Carbon-aware routing** + live grid feed | — | ✅ |
+| **Complexity/greenest routing** to cut energy | — | ✅ |
+| Prompt optimization with reported J saved | — | ✅ |
+
+If you want a gateway, use LiteLLM. If you want to *see and shrink the energy
+behind your inference*, that's Joule — and it can sit in front of a gateway.
+
 ## Grounding in measured data
 
 Joule's per-token figures are estimates, but they are **calibrated to published
@@ -291,6 +311,11 @@ it); it is in-memory, bounded (LRU), and never caches streaming requests. Note
 that with `temperature > 0` a hit replays a prior sample verbatim — the intended
 behaviour of an exact-match cache.
 
+**Set a TTL for time-sensitive prompts.** By default entries live until evicted
+by capacity, so "today's date" or "current price" answers can go stale.
+`--cache-ttl <seconds>` expires entries after that age (applies to both caches);
+`0` (the default) means no expiry.
+
 **Semantic cache** (opt-in, `--semantic-cache`) goes further: it embeds the
 prompt and reuses a past answer when cosine similarity clears a threshold
 (default 0.92), so *differently-worded but equivalent* prompts share one
@@ -299,6 +324,12 @@ collapse to a single call (`x-joule-cache: semantic`). It needs an
 OpenAI-compatible embeddings endpoint (`--embed-model`, defaulting to the
 upstream); each non-cached request then pays one small embedding call to enable
 the larger generation hits.
+
+> ⚠️ **The semantic cache can return a near-miss answer.** Similarity is not
+> equivalence: "flights to Paris in May" and "…in June" may clear the threshold
+> and share one answer. Raise `semantic_threshold`, pair it with `--cache-ttl`,
+> and leave it off for prompts where small wording differences change the
+> correct answer.
 
 ## Providers & routing (plugins)
 
@@ -355,6 +386,14 @@ For the `greenest` router, add a candidate list:
 ```json
 { "router": "greenest", "greenest_candidates": ["claude-3-5-haiku", "gpt-4o-mini", "gemini-1.5-flash"] }
 ```
+
+The `carbon` router is only meaningful when you **control where inference
+runs** — multi-region self-hosted deployments (vLLM/Ollama in more than one
+datacenter), or a mix of providers in different-carbon regions. You can't pick
+which datacenter a hosted API like OpenAI serves you from, so tag a hosted
+provider with the region you believe it runs in and treat the number as an
+estimate. Where it shines: routing your own GPU fleet toward whichever region's
+grid is cleanest right now.
 
 For the `carbon` router, tag each provider with a `region` (and optionally
 override intensities). Joule routes to the cleanest region's provider:
@@ -435,6 +474,37 @@ HTTP/1.1 503 Service Unavailable
 x-joule-circuit: open
 ```
 
+## Securing the proxy
+
+By default the proxy is **open**: anyone who can reach the port can spend the
+upstream API key it holds and read `/stats`. For anything beyond localhost, set
+a key:
+
+```sh
+JOULE_PROXY_API_KEY=$(openssl rand -hex 16) joule serve --upstream …
+```
+
+Clients then send it in the `x-joule-key` header (a dedicated header, so your
+upstream `Authorization` credentials still pass through untouched):
+
+```sh
+curl http://127.0.0.1:8080/v1/chat/completions \
+  -H "x-joule-key: $JOULE_PROXY_API_KEY" -H 'content-type: application/json' \
+  -d '{"model":"gpt-4o-mini","messages":[{"role":"user","content":"hi"}]}'
+```
+
+Every route requires the key except `/healthz`. Missing/wrong key → `401`.
+The key is compared in constant time. This is coarse gatekeeping, not per-user
+auth — put Joule behind your own gateway/TLS for real multi-tenant use.
+
+## Dashboards
+
+Joule exports everything to Prometheus, so a dashboard is just an import. A
+ready-made one lives at [`grafana/joule.json`](grafana/joule.json) — energy and
+energy-saved, cache hit ratio, p95 latency, cost, grid carbon intensity, and
+circuit/retry state. In Grafana: **Dashboards → New → Import**, upload the file,
+and pick your Prometheus data source.
+
 ## CLI
 
 ```sh
@@ -456,11 +526,13 @@ joule models
 | `--optimize` | — | `lite` | `off`, `lite`, `full`, or `ultra` |
 | `--no-cache` | — | off (cache on) | disable the exact-match response cache |
 | `--cache-capacity` | `JOULE_CACHE_CAPACITY` | `1024` | max cached responses (LRU) |
+| `--cache-ttl` | `JOULE_CACHE_TTL` | `0` | cache entry lifetime in seconds (0 = no expiry) |
 | `--semantic-cache` | — | off | enable embedding-similarity cache |
 | `--embed-model` | — | `text-embedding-3-small` | embeddings model for semantic cache |
 | `--timeout` | `JOULE_TIMEOUT` | `60` | per-request upstream timeout (s, non-streaming) |
 | `--max-retries` | `JOULE_MAX_RETRIES` | `2` | retries on transient upstream failure |
-| `--api-key` | `JOULE_UPSTREAM_API_KEY` | — | fallback credential |
+| `--api-key` | `JOULE_UPSTREAM_API_KEY` | — | fallback upstream credential |
+| `--proxy-api-key` | `JOULE_PROXY_API_KEY` | — | require this key in the `x-joule-key` header (else open) |
 | `--db` | `JOULE_DB` | `joule.db` | SQLite request log |
 | `--grid-intensity` | `JOULE_GRID_INTENSITY` | `445` | g CO₂ / kWh (IEA 2024 global avg) |
 

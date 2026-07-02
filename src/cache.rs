@@ -15,6 +15,7 @@
 
 use std::num::NonZeroUsize;
 use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
 use bytes::Bytes;
 use lru::LruCache;
@@ -33,19 +34,25 @@ pub struct CachedResponse {
 }
 
 /// Bounded in-memory exact-match cache. When disabled, every operation is a
-/// no-op so callers need no branching.
+/// no-op so callers need no branching. An optional TTL expires stale entries so
+/// a cached answer to a time-sensitive prompt can't live forever.
+/// An entry plus when it was inserted, for TTL checks.
+type Entry = (Instant, CachedResponse);
+
 pub struct Cache {
-    inner: Option<Mutex<LruCache<Vec<u8>, CachedResponse>>>,
+    inner: Option<Mutex<LruCache<Vec<u8>, Entry>>>,
+    ttl: Option<Duration>,
 }
 
 impl Cache {
-    /// Create a cache. When `enabled` is false the cache is inert.
-    pub fn new(enabled: bool, capacity: usize) -> Self {
+    /// Create a cache. When `enabled` is false the cache is inert. `ttl = None`
+    /// keeps entries until evicted by capacity; `Some(d)` expires them after `d`.
+    pub fn new(enabled: bool, capacity: usize, ttl: Option<Duration>) -> Self {
         let inner = enabled.then(|| {
             let cap = NonZeroUsize::new(capacity.max(1)).expect("capacity >= 1");
             Mutex::new(LruCache::new(cap))
         });
-        Self { inner }
+        Self { inner, ttl }
     }
 
     pub fn enabled(&self) -> bool {
@@ -58,17 +65,27 @@ impl Cache {
         serde_json::to_vec(request).ok()
     }
 
-    /// Look up a response, promoting it to most-recently-used on a hit.
+    /// Look up a response, promoting it to most-recently-used on a hit. A hit
+    /// past its TTL is dropped and reported as a miss.
     pub fn get(&self, key: &[u8]) -> Option<CachedResponse> {
         let mutex = self.inner.as_ref()?;
         let mut guard = mutex.lock().expect("cache mutex");
-        guard.get(key).cloned()
+        let (inserted, resp) = guard.get(key)?;
+        let (inserted, resp) = (*inserted, resp.clone());
+        if self.ttl.is_some_and(|ttl| inserted.elapsed() > ttl) {
+            guard.pop(key);
+            return None;
+        }
+        Some(resp)
     }
 
     /// Insert a response (no-op when the cache is disabled).
     pub fn put(&self, key: Vec<u8>, response: CachedResponse) {
         if let Some(mutex) = &self.inner {
-            mutex.lock().expect("cache mutex").put(key, response);
+            mutex
+                .lock()
+                .expect("cache mutex")
+                .put(key, (Instant::now(), response));
         }
     }
 }
@@ -91,7 +108,7 @@ mod tests {
 
     #[test]
     fn hit_and_miss() {
-        let cache = Cache::new(true, 8);
+        let cache = Cache::new(true, 8, None);
         let k = Cache::key(&json!({"model":"m","messages":[]})).unwrap();
         assert!(cache.get(&k).is_none());
         cache.put(k.clone(), entry("hello"));
@@ -106,8 +123,18 @@ mod tests {
     }
 
     #[test]
+    fn ttl_expires_entries() {
+        let cache = Cache::new(true, 8, Some(Duration::from_millis(20)));
+        let k = Cache::key(&json!({"model":"m","messages":[]})).unwrap();
+        cache.put(k.clone(), entry("fresh"));
+        assert!(cache.get(&k).is_some()); // within TTL
+        std::thread::sleep(Duration::from_millis(30));
+        assert!(cache.get(&k).is_none()); // expired
+    }
+
+    #[test]
     fn disabled_cache_is_inert() {
-        let cache = Cache::new(false, 8);
+        let cache = Cache::new(false, 8, None);
         assert!(!cache.enabled());
         let k = Cache::key(&json!({"x":1})).unwrap();
         cache.put(k.clone(), entry("x"));
@@ -116,7 +143,7 @@ mod tests {
 
     #[test]
     fn evicts_least_recently_used() {
-        let cache = Cache::new(true, 2);
+        let cache = Cache::new(true, 2, None);
         let k1 = Cache::key(&json!({"i":1})).unwrap();
         let k2 = Cache::key(&json!({"i":2})).unwrap();
         let k3 = Cache::key(&json!({"i":3})).unwrap();

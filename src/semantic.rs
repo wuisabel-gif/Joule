@@ -11,6 +11,7 @@
 //! call to enable (much larger) generation hits.
 
 use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
 use reqwest::header::AUTHORIZATION;
 use serde_json::json;
@@ -42,7 +43,8 @@ pub struct SemanticCache {
     embed_key: Option<String>,
     threshold: f32,
     capacity: usize,
-    store: Mutex<Vec<(Vec<f32>, CachedResponse)>>,
+    ttl: Option<Duration>,
+    store: Mutex<Vec<(Instant, Vec<f32>, CachedResponse)>>,
 }
 
 impl SemanticCache {
@@ -53,6 +55,7 @@ impl SemanticCache {
         embed_key: Option<String>,
         threshold: f32,
         capacity: usize,
+        ttl: Option<Duration>,
     ) -> Self {
         Self {
             client,
@@ -61,6 +64,7 @@ impl SemanticCache {
             embed_key,
             threshold,
             capacity: capacity.max(1),
+            ttl,
             store: Mutex::new(Vec::new()),
         }
     }
@@ -94,7 +98,12 @@ impl SemanticCache {
     pub fn lookup(&self, query: &[f32]) -> Option<(f32, CachedResponse)> {
         let store = self.store.lock().expect("semantic store");
         let mut best: Option<(f32, &CachedResponse)> = None;
-        for (emb, resp) in store.iter() {
+        for (inserted, emb, resp) in store.iter() {
+            // ponytail: expired entries are skipped, not pruned here — capacity
+            // FIFO reclaims them. Prune on lookup only if memory pressure shows.
+            if self.ttl.is_some_and(|ttl| inserted.elapsed() > ttl) {
+                continue;
+            }
             let sim = cosine(query, emb);
             if best.is_none_or(|(b, _)| sim > b) {
                 best = Some((sim, resp));
@@ -112,7 +121,7 @@ impl SemanticCache {
         if store.len() >= self.capacity {
             store.remove(0);
         }
-        store.push((embedding, response));
+        store.push((Instant::now(), embedding, response));
     }
 }
 
@@ -172,12 +181,30 @@ mod tests {
             None,
             0.95,
             16,
+            None,
         );
         sc.put(vec![1.0, 0.0, 0.0], entry());
         // Near-identical query → hit.
         assert!(sc.lookup(&[0.99, 0.01, 0.0]).is_some());
         // Orthogonal query → miss.
         assert!(sc.lookup(&[0.0, 1.0, 0.0]).is_none());
+    }
+
+    #[test]
+    fn ttl_expires_entries() {
+        let sc = SemanticCache::new(
+            reqwest::Client::new(),
+            "http://x".into(),
+            "m".into(),
+            None,
+            0.9,
+            16,
+            Some(Duration::from_millis(20)),
+        );
+        sc.put(vec![1.0, 0.0], entry());
+        assert!(sc.lookup(&[1.0, 0.0]).is_some()); // within TTL
+        std::thread::sleep(Duration::from_millis(30));
+        assert!(sc.lookup(&[1.0, 0.0]).is_none()); // expired
     }
 
     #[test]
@@ -189,6 +216,7 @@ mod tests {
             None,
             0.5,
             2,
+            None,
         );
         sc.put(vec![1.0, 0.0], entry());
         sc.put(vec![0.0, 1.0], entry());

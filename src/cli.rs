@@ -74,6 +74,11 @@ pub struct ServeArgs {
     #[arg(long, env = "JOULE_CACHE_CAPACITY", default_value_t = 1024)]
     pub cache_capacity: usize,
 
+    /// Cache entry lifetime in seconds (0 = no expiry). Guards against serving a
+    /// stale answer to a time-sensitive prompt. Applies to both caches.
+    #[arg(long, env = "JOULE_CACHE_TTL", default_value_t = 0)]
+    pub cache_ttl: u64,
+
     /// Enable the semantic (embedding-similarity) cache. Needs an embeddings
     /// endpoint (defaults to the upstream).
     #[arg(long)]
@@ -94,6 +99,11 @@ pub struct ServeArgs {
     /// API key injected when the client request omits credentials.
     #[arg(long, env = "JOULE_UPSTREAM_API_KEY")]
     pub api_key: Option<String>,
+
+    /// Require this key in the `x-joule-key` header on every request (health
+    /// checks excepted). Without it the proxy is open to anyone who can reach it.
+    #[arg(long, env = "JOULE_PROXY_API_KEY")]
+    pub proxy_api_key: Option<String>,
 
     /// Path to the SQLite request log.
     #[arg(long, env = "JOULE_DB", default_value = "joule.db")]

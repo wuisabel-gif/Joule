@@ -185,6 +185,9 @@ pub struct Config {
     /// Maximum entries in the response cache.
     #[serde(default = "default_cache_capacity")]
     pub cache_capacity: usize,
+    /// Cache entry lifetime, seconds. 0 = no expiry (evict by capacity only).
+    #[serde(default)]
+    pub cache_ttl_secs: u64,
     /// Semantic (embedding-similarity) cache (off by default; needs embeddings).
     #[serde(default)]
     pub semantic_cache: bool,
@@ -217,6 +220,10 @@ pub struct Config {
     pub circuit_cooldown_secs: u64,
     #[serde(default = "default_grid")]
     pub grid_intensity: f64,
+    /// Require this key in the `x-joule-key` header on every request (health
+    /// checks excepted). Prefer the `JOULE_PROXY_API_KEY` env var. None = open.
+    #[serde(default)]
+    pub proxy_api_key: Option<String>,
 }
 
 impl Config {
@@ -242,11 +249,13 @@ impl Config {
         optimize: OptLevel,
         cache: bool,
         cache_capacity: usize,
+        cache_ttl_secs: u64,
         semantic_cache: bool,
         embed_model: String,
         timeout_secs: u64,
         max_retries: u32,
         grid_intensity: f64,
+        proxy_api_key: Option<String>,
     ) -> Self {
         Config {
             providers: vec![ProviderConfig {
@@ -273,6 +282,7 @@ impl Config {
             optimize,
             cache,
             cache_capacity,
+            cache_ttl_secs,
             semantic_cache,
             embed_model,
             embed_base_url: None,
@@ -285,6 +295,7 @@ impl Config {
             circuit_threshold: default_circuit_threshold(),
             circuit_cooldown_secs: default_circuit_cooldown_secs(),
             grid_intensity,
+            proxy_api_key,
         }
     }
 
@@ -335,6 +346,7 @@ impl Config {
             key,
             self.semantic_threshold as f32,
             self.semantic_capacity,
+            self.cache_ttl(),
         ))
     }
 
@@ -343,9 +355,23 @@ impl Config {
         Optimizer::new(self.optimize)
     }
 
+    /// Cache entry TTL, if a positive lifetime is configured.
+    fn cache_ttl(&self) -> Option<Duration> {
+        (self.cache_ttl_secs > 0).then(|| Duration::from_secs(self.cache_ttl_secs))
+    }
+
     /// Build the configured response cache.
     pub fn build_cache(&self) -> Cache {
-        Cache::new(self.cache, self.cache_capacity)
+        Cache::new(self.cache, self.cache_capacity, self.cache_ttl())
+    }
+
+    /// The configured proxy key (env `JOULE_PROXY_API_KEY` wins over config).
+    pub fn proxy_key(&self) -> Option<Arc<str>> {
+        std::env::var("JOULE_PROXY_API_KEY")
+            .ok()
+            .filter(|s| !s.is_empty())
+            .or_else(|| self.proxy_api_key.clone())
+            .map(Arc::from)
     }
 
     /// The resolved default provider name (first provider if unset).
