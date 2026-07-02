@@ -10,6 +10,7 @@ mod cli;
 mod config;
 mod error;
 mod estimator;
+mod eval;
 mod metrics;
 mod optimizer;
 mod provider;
@@ -53,6 +54,7 @@ async fn main() -> Result<()> {
         }
         Command::Optimize(args) => optimize(args),
         Command::Report(args) => report(args),
+        Command::Eval(args) => eval::eval(args).await,
         Command::Models => {
             list_models();
             Ok(())

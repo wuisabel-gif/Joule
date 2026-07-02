@@ -170,6 +170,19 @@ Per-request results are also returned to the client as response headers:
 > *observable* is the point; per-deployment precision comes from
 > `--grid-intensity` and refining the profiles.
 
+## Install
+
+Grab a prebuilt binary for your platform from the
+[latest release](https://github.com/wuisabel-gif/Joule/releases/latest)
+(Linux x86-64, macOS arm64/x86-64):
+
+```sh
+# example: macOS Apple Silicon
+TAG=$(gh release view --json tagName -q .tagName)   # or pick a version
+curl -sSL "https://github.com/wuisabel-gif/Joule/releases/download/$TAG/joule-$TAG-aarch64-apple-darwin.tar.gz" | tar xz
+./joule --help
+```
+
 ## Build
 
 ```sh
@@ -505,12 +518,44 @@ energy-saved, cache hit ratio, p95 latency, cost, grid carbon intensity, and
 circuit/retry state. In Grafana: **Dashboards → New → Import**, upload the file,
 and pick your Prometheus data source.
 
+## Proving the "same answer" claim (`joule eval`)
+
+Energy savings only count if quality holds. `joule eval` A/Bs a **baseline** and
+a **treatment** endpoint over a prompt file, compares the energy each reports,
+and — with an optional judge model — scores whether the treatment's answers are
+as good. So a routing or optimizer change lands on evidence, not faith:
+
+```sh
+# prompts.txt — one prompt per line (# comments allowed)
+
+# baseline = Joule with the policy off; treatment = Joule with it on
+joule eval --prompts prompts.txt \
+  --baseline  http://127.0.0.1:8080 \
+  --treatment http://127.0.0.1:8081 \
+  --judge http://127.0.0.1:8080 --judge-model gpt-4o-mini
+```
+
+```
+Trials:          20 (20 completed)
+Energy:          baseline 812.4 J → treatment up to 41% less
+Energy saved:    41.0%
+Quality (judge): mean 96/100, 100% at or above threshold
+Verdict:         ✓ energy down, quality held
+```
+
+> Run baseline and treatment as **separate Joule instances** (or with different
+> configs) — pointed at the same instance they'd share a cache and the treatment
+> would trivially hit it. Energy figures come from each endpoint's
+> `x-joule-energy-j` header, so both sides should be Joule. The judge score is a
+> heuristic (an LLM grading answers) — spot-check the low scorers.
+
 ## CLI
 
 ```sh
 joule estimate --model gpt-4o --input 1200 --output 400
 joule optimize --level full --model gpt-4o --text "Could you please help me"
 joule report                 # totals, cache hits, top models, energy saved
+joule eval --prompts prompts.txt --baseline URL --treatment URL  # energy vs quality
 joule models
 ```
 

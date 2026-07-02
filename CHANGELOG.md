@@ -7,6 +7,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- **`joule eval`** — A/B a baseline vs treatment endpoint over a prompt file,
+  comparing reported energy and (with an optional `--judge` model) scoring
+  whether answers held up. Turns "same answer, less energy" into a measured
+  energy-saved% next to a quality pass-rate, so routing/optimizer changes land
+  on evidence.
+- **Prebuilt release binaries** — a `release.yml` workflow attaches
+  Linux x86-64 and macOS arm64/x86-64 tarballs to each published GitHub release.
 - **Cache TTL** (`--cache-ttl <seconds>`) — expires entries after a set age so a
   cached answer to a time-sensitive prompt can't live forever. Applies to both
   the exact-match and semantic caches; `0` (default) keeps the prior

@@ -24,8 +24,57 @@ pub enum Command {
     Optimize(OptimizeArgs),
     /// Summarize the request log: totals, top models, and cumulative savings.
     Report(ReportArgs),
+    /// A/B two endpoints on a prompt set: energy saved vs quality kept.
+    Eval(EvalArgs),
     /// List the known model energy/price profiles.
     Models,
+}
+
+#[derive(Debug, Args)]
+pub struct EvalArgs {
+    /// File of prompts, one per line (`#` comments and blank lines ignored).
+    #[arg(long)]
+    pub prompts: String,
+
+    /// Baseline endpoint (e.g. Joule with the policy off). OpenAI-compatible.
+    #[arg(long, default_value = "http://127.0.0.1:8080")]
+    pub baseline: String,
+
+    /// Treatment endpoint (e.g. Joule with the policy under test).
+    #[arg(long, default_value = "http://127.0.0.1:8080")]
+    pub treatment: String,
+
+    /// Model requested from the baseline endpoint.
+    #[arg(long, default_value = "gpt-4o")]
+    pub baseline_model: String,
+
+    /// Model requested from the treatment endpoint.
+    #[arg(long, default_value = "gpt-4o")]
+    pub treatment_model: String,
+
+    /// Optional judge endpoint; when set, scores treatment answers vs baseline.
+    #[arg(long)]
+    pub judge: Option<String>,
+
+    /// Model requested from the judge endpoint.
+    #[arg(long, default_value = "gpt-4o-mini")]
+    pub judge_model: String,
+
+    /// A judged answer at or above this score (0–100) counts as quality-kept.
+    #[arg(long, default_value_t = 70)]
+    pub judge_threshold: u32,
+
+    /// Bearer token for the upstream calls (baseline/treatment/judge).
+    #[arg(long, env = "JOULE_UPSTREAM_API_KEY")]
+    pub api_key: Option<String>,
+
+    /// `x-joule-key` sent to the endpoints if they require proxy auth.
+    #[arg(long, env = "JOULE_PROXY_API_KEY")]
+    pub proxy_key: Option<String>,
+
+    /// Per-request timeout in seconds.
+    #[arg(long, default_value_t = 60)]
+    pub timeout: u64,
 }
 
 #[derive(Debug, Args)]
