@@ -12,12 +12,26 @@
   &nbsp;<img src="https://img.shields.io/badge/Rust-1.96%2B-2FE08A.svg" alt="Rust">
 </p>
 
-Energy-aware optimization middleware for LLM inference.
-
 Joule sits between your application and an LLM provider, speaking the
 OpenAI-compatible API, and answers one question for every request:
 
 > How many joules did this response cost, and could it have been lower?
+
+Point any OpenAI-compatible client at Joule — **just change the base URL** — and
+every response comes back measured, optimized, and accounted for:
+
+```http
+x-joule-energy-j: 3.3500          # estimated energy for this response
+x-joule-co2-g: 0.413000           # grams CO₂ at your grid's intensity
+x-joule-cost-usd: 0.002100
+x-joule-optimized: true           # prompt was trimmed before it was sent
+x-joule-prompt-saved-tokens: 26
+x-joule-cache: miss               # a repeat request would cost ~0 J
+```
+
+Nothing else in your app changes. **New here? Jump to the
+[Quickstart](#quickstart-no-api-key-local-ollama)** — it runs against a local
+model with no API key.
 
 This repository implements **Phase 1** (a transparent measuring proxy) plus the
 prompt-optimization, caching (exact + semantic), and routing (including
@@ -138,7 +152,9 @@ their calibration comments, and [ROADMAP.md § References](ROADMAP.md#references
 for the full academic bibliography (Strubell et al. 2019; Patterson et al. 2021;
 Luccioni et al. 2024; Samsi et al. 2023; and others).
 
-## What Phase 1 does
+## What Joule does
+
+Phase 1 is the measuring core; caching, optimization, and routing build on it.
 
 - **OpenAI-compatible proxy** — point your client's base URL at Joule; it
   forwards `/v1/chat/completions` (streaming and non-streaming) and transparently
@@ -158,7 +174,7 @@ Luccioni et al. 2024; Samsi et al. 2023; and others).
 - **Metrics** — Prometheus exposition at `/metrics`, labelled by model.
 - **Request log** — every request is persisted to SQLite and summarised at
   `/stats`.
-- **CLI** — `serve`, `estimate`, `optimize`, `report`, and `models`.
+- **CLI** — `serve`, `estimate`, `optimize`, `report`, `eval`, and `models`.
 
 Per-request results are also returned to the client as response headers:
 `x-joule-energy-j`, `x-joule-electricity-wh`, `x-joule-co2-g`,
@@ -468,10 +484,10 @@ go to the small one; everything else to the capable one:
 A flaky upstream shouldn't take Joule down with it. Every upstream call goes
 through three layers:
 
-- **Timeouts** — a connect timeout (`--connect-timeout`-ish, default 10s) fails
-  fast on an unreachable provider; a per-request timeout (`--timeout`, default
-  60s) bounds non-streaming calls (streams are exempt so long generations
-  aren't cut off).
+- **Timeouts** — a connect timeout (config `connect_timeout_secs`, default 10s)
+  fails fast on an unreachable provider; a per-request timeout (`--timeout`,
+  default 60s) bounds non-streaming calls (streams are exempt so long
+  generations aren't cut off).
 - **Retries** — transient failures (connection errors, timeouts, `5xx`, `429`)
   are retried with exponential backoff, up to `--max-retries` (default 2).
   Counted in `joule_upstream_retries_total`.
@@ -580,6 +596,11 @@ joule models
 | `--proxy-api-key` | `JOULE_PROXY_API_KEY` | — | require this key in the `x-joule-key` header (else open) |
 | `--db` | `JOULE_DB` | `joule.db` | SQLite request log |
 | `--grid-intensity` | `JOULE_GRID_INTENSITY` | `445` | g CO₂ / kWh (IEA 2024 global avg) |
+
+The `--config` JSON file exposes everything above plus multi-provider setups and
+options with no CLI flag — `connect_timeout_secs`, `circuit_threshold`,
+`circuit_cooldown_secs`, `carbon_source` / `carbon_zones`, `semantic_threshold`,
+and `carbon_overrides`. See the routing, caching, and resilience sections above.
 
 ## Test
 
