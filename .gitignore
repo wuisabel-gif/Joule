@@ -5,3 +5,6 @@
 *.db-shm
 .DS_Store
 /.claude/
+# iCloud creates " 2" duplicates of synced files; never track them.
+* 2.html
+* 2.png
