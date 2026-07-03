@@ -25,11 +25,14 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # ponytail: three native builds. Skipped linux-aarch64 (needs a C
-          # cross-toolchain for bundled SQLite) and Windows — add when asked.
+          # Both macOS targets build on Apple Silicon (macos-14): arm64 native,
+          # x86_64 cross-compiled — the macOS SDK ships both arches, so this
+          # avoids the scarce/deprecated Intel `macos-13` runner. Skipped
+          # linux-aarch64 (needs a C cross-toolchain for bundled SQLite) and
+          # Windows — add when asked.
           - { os: ubuntu-22.04, target: x86_64-unknown-linux-gnu }
           - { os: macos-14,     target: aarch64-apple-darwin }
-          - { os: macos-13,     target: x86_64-apple-darwin }
+          - { os: macos-14,     target: x86_64-apple-darwin }
     steps:
       - uses: actions/checkout@v4
         with:
