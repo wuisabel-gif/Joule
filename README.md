@@ -188,7 +188,13 @@ Per-request results are also returned to the client as response headers:
 
 ## Install
 
-Grab a prebuilt binary for your platform from the
+**Homebrew** (macOS / Linux):
+
+```sh
+brew install wuisabel-gif/joule/joule
+```
+
+**Prebuilt binary** — grab one for your platform from the
 [latest release](https://github.com/wuisabel-gif/Joule/releases/latest)
 (Linux x86-64, macOS arm64/x86-64):
 
