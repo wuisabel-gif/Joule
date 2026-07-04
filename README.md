@@ -174,7 +174,11 @@ The power source is pluggable (`--power-source`, default per-OS):
 |--------|----------|-------|
 | `powermetrics` | Apple Silicon (macOS) | default on macOS; needs a NOPASSWD sudoers line for `powermetrics` |
 | `tegrastats` | NVIDIA Jetson | default on Linux; reads the on-board INA3221 monitor |
-| `nvidia_smi` | desktop/server NVIDIA GPU | polls `power.draw` |
+| `nvidia_smi` | NVIDIA GPU (Windows / Linux) | default on Windows; polls `power.draw` |
+
+On Windows the realistic inference box is an NVIDIA GPU, so `nvidia_smi` is the
+default and works out of the box. CPU/iGPU-only power on Windows has no built-in
+source (it needs third-party admin tools) — measured power there covers the GPU.
 
 Live power and cumulative measured energy are exported as
 `joule_board_power_watts` and `joule_measured_energy_joules_total{model}`.
@@ -238,7 +242,7 @@ brew install wuisabel-gif/joule/joule
 
 **Prebuilt binary** — grab one for your platform from the
 [latest release](https://github.com/wuisabel-gif/Joule/releases/latest)
-(Linux x86-64, macOS arm64/x86-64):
+(Linux x86-64, macOS arm64/x86-64, Windows x86-64):
 
 ```sh
 # example: macOS Apple Silicon

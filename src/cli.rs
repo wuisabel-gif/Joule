@@ -160,7 +160,7 @@ pub struct ServeArgs {
     pub measure_power: bool,
 
     /// Power source for `--measure-power` (default: powermetrics on macOS,
-    /// tegrastats on Linux/Jetson; use nvidia-smi for desktop/server GPUs).
+    /// nvidia-smi on Windows, tegrastats on Linux/Jetson).
     #[arg(long, value_enum)]
     pub power_source: Option<crate::power::PowerSource>,
 

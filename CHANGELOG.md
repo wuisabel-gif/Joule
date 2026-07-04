@@ -12,13 +12,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   and reports **measured** joules (`x-joule-measured-j`) next to the token-based
   estimate. The source is pluggable (`--power-source`, default per-OS):
   **`powermetrics`** (Apple Silicon), **`tegrastats`** (NVIDIA Jetson), and
-  **`nvidia_smi`** (desktop/server GPUs). Live power and cumulative measured
+  **`nvidia_smi`** (NVIDIA GPUs on Windows/Linux). Live power and cumulative measured
   energy are exported as `joule_board_power_watts` and
   `joule_measured_energy_joules_total{model}`. Rails to sum are configurable
   (`power_rails`; sensible per-source defaults) and logged on startup, warning
   on a mismatch instead of silently reporting zero. If the tool is absent (or
   sudo isn't set up for `powermetrics`) it warns and falls back to estimates —
   never blocks serving. Under concurrent requests measured energy is per-window.
+- **Windows release binary** — the release workflow now also builds
+  `x86_64-pc-windows-msvc`, so Windows users get a prebuilt `joule.exe`.
 
 ## [0.5.0] — 2026-07-02
 

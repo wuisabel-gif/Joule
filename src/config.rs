@@ -131,11 +131,14 @@ fn default_power_interval_ms() -> u64 {
     500
 }
 
-/// Default power source: macOS → powermetrics, otherwise tegrastats (Jetson).
-/// Desktop/server NVIDIA users select `nvidia_smi` explicitly.
+/// Default power source per OS: macOS → powermetrics, Windows → nvidia-smi
+/// (the realistic Windows LLM box is an NVIDIA GPU), otherwise tegrastats
+/// (Jetson). Override with `--power-source` / `power_source`.
 fn default_power_source() -> crate::power::PowerSource {
     if cfg!(target_os = "macos") {
         crate::power::PowerSource::Powermetrics
+    } else if cfg!(target_os = "windows") {
+        crate::power::PowerSource::NvidiaSmi
     } else {
         crate::power::PowerSource::Tegrastats
     }
