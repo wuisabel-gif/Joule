@@ -131,8 +131,14 @@ fn default_power_interval_ms() -> u64 {
     500
 }
 
-fn default_tegrastats_path() -> String {
-    "tegrastats".to_string()
+/// Default power source: macOS → powermetrics, otherwise tegrastats (Jetson).
+/// Desktop/server NVIDIA users select `nvidia_smi` explicitly.
+fn default_power_source() -> crate::power::PowerSource {
+    if cfg!(target_os = "macos") {
+        crate::power::PowerSource::Powermetrics
+    } else {
+        crate::power::PowerSource::Tegrastats
+    }
 }
 
 /// Environment variable holding the live carbon-feed auth token (kept out of
@@ -232,20 +238,23 @@ pub struct Config {
     /// checks excepted). Prefer the `JOULE_PROXY_API_KEY` env var. None = open.
     #[serde(default)]
     pub proxy_api_key: Option<String>,
-    /// Sample real board power (NVIDIA Jetson `tegrastats`) and report measured
-    /// energy alongside the estimate. Off by default; needs the hardware.
+    /// Sample real board power and report measured energy alongside the
+    /// estimate. Off by default; needs self-hosted hardware + a power source.
     #[serde(default)]
     pub measure_power: bool,
-    /// `tegrastats` power rails to sum (see the startup log for what your board
-    /// exposes). Defaults to Orin AGX compute rails.
-    #[serde(default = "crate::power::default_rails")]
+    /// Which power source to sample (`tegrastats` / `powermetrics` / `nvidia_smi`).
+    #[serde(default = "default_power_source")]
+    pub power_source: crate::power::PowerSource,
+    /// Power rails to sum (see the startup log for what your machine exposes).
+    /// Empty ⇒ the source's default rails.
+    #[serde(default)]
     pub power_rails: Vec<String>,
     /// Power sampling interval, milliseconds.
     #[serde(default = "default_power_interval_ms")]
     pub power_interval_ms: u64,
-    /// Path to the `tegrastats` binary.
-    #[serde(default = "default_tegrastats_path")]
-    pub tegrastats_path: String,
+    /// Override the power tool's binary path (else found on `PATH`).
+    #[serde(default)]
+    pub power_source_path: Option<String>,
 }
 
 impl Config {
@@ -279,6 +288,7 @@ impl Config {
         grid_intensity: f64,
         proxy_api_key: Option<String>,
         measure_power: bool,
+        power_source: Option<crate::power::PowerSource>,
     ) -> Self {
         Config {
             providers: vec![ProviderConfig {
@@ -320,9 +330,10 @@ impl Config {
             grid_intensity,
             proxy_api_key,
             measure_power,
-            power_rails: crate::power::default_rails(),
+            power_source: power_source.unwrap_or_else(default_power_source),
+            power_rails: Vec::new(),
             power_interval_ms: default_power_interval_ms(),
-            tegrastats_path: default_tegrastats_path(),
+            power_source_path: None,
         }
     }
 
@@ -394,8 +405,12 @@ impl Config {
 
     /// Build the power meter if measured power is enabled.
     pub fn build_power_meter(&self) -> Option<Arc<crate::power::PowerMeter>> {
-        self.measure_power
-            .then(|| Arc::new(crate::power::PowerMeter::new(self.power_rails.clone())))
+        self.measure_power.then(|| {
+            Arc::new(crate::power::PowerMeter::new(
+                self.power_source,
+                self.power_rails.clone(),
+            ))
+        })
     }
 
     /// The configured proxy key (env `JOULE_PROXY_API_KEY` wins over config).

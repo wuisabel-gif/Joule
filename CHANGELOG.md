@@ -7,16 +7,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
-- **Measured power for self-hosted inference** (`--measure-power`) — on an NVIDIA
-  Jetson, a background sampler reads the board's on-chip power monitor via
-  `tegrastats`, integrates it over each request, and reports **measured** joules
-  (`x-joule-measured-j`) next to the token-based estimate. Live board power and
-  cumulative measured energy are exported as `joule_board_power_watts` and
+- **Measured power for self-hosted inference** (`--measure-power`) — a background
+  sampler reads the machine's real power draw, integrates it over each request,
+  and reports **measured** joules (`x-joule-measured-j`) next to the token-based
+  estimate. The source is pluggable (`--power-source`, default per-OS):
+  **`powermetrics`** (Apple Silicon), **`tegrastats`** (NVIDIA Jetson), and
+  **`nvidia_smi`** (desktop/server GPUs). Live power and cumulative measured
+  energy are exported as `joule_board_power_watts` and
   `joule_measured_energy_joules_total{model}`. Rails to sum are configurable
-  (`power_rails`; defaults to Orin AGX compute rails) and logged on startup. If
-  `tegrastats` is absent it warns and falls back to estimates — never blocks
-  serving. Under concurrent requests measured energy is per-window, not a clean
-  per-request split.
+  (`power_rails`; sensible per-source defaults) and logged on startup, warning
+  on a mismatch instead of silently reporting zero. If the tool is absent (or
+  sudo isn't set up for `powermetrics`) it warns and falls back to estimates —
+  never blocks serving. Under concurrent requests measured energy is per-window.
 
 ## [0.5.0] — 2026-07-02
 

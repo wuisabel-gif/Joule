@@ -82,6 +82,7 @@ async fn serve(args: ServeArgs) -> Result<()> {
             args.grid_intensity,
             args.proxy_api_key,
             args.measure_power,
+            args.power_source,
         ),
     };
 
@@ -107,14 +108,15 @@ async fn serve(args: ServeArgs) -> Result<()> {
     let power = config.build_power_meter();
     if let Some(meter) = &power {
         info!(
+            source = ?meter.source(),
             rails = ?meter.rails(),
             interval_ms = config.power_interval_ms,
-            "measured power enabled (tegrastats)",
+            "measured power enabled",
         );
         power::spawn_sampler(
             meter.clone(),
             metrics.clone(),
-            config.tegrastats_path.clone(),
+            config.power_source_path.clone(),
             config.power_interval_ms,
         );
     }

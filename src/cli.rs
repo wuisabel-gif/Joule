@@ -154,10 +154,15 @@ pub struct ServeArgs {
     #[arg(long, env = "JOULE_PROXY_API_KEY")]
     pub proxy_api_key: Option<String>,
 
-    /// Sample real board power via `tegrastats` (NVIDIA Jetson) and report
-    /// measured energy (`x-joule-measured-j`) next to the estimate.
+    /// Sample real board power on self-hosted hardware and report measured
+    /// energy (`x-joule-measured-j`) next to the estimate.
     #[arg(long)]
     pub measure_power: bool,
+
+    /// Power source for `--measure-power` (default: powermetrics on macOS,
+    /// tegrastats on Linux/Jetson; use nvidia-smi for desktop/server GPUs).
+    #[arg(long, value_enum)]
+    pub power_source: Option<crate::power::PowerSource>,
 
     /// Path to the SQLite request log.
     #[arg(long, env = "JOULE_DB", default_value = "joule.db")]
