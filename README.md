@@ -152,6 +152,39 @@ their calibration comments, and [ROADMAP.md § References](ROADMAP.md#references
 for the full academic bibliography (Strubell et al. 2019; Patterson et al. 2021;
 Luccioni et al. 2024; Samsi et al. 2023; and others).
 
+### Measured power on hardware you control
+
+For a hosted API you can only estimate. But when the model runs on **your own
+NVIDIA Jetson**, Joule can *measure* the real thing: `--measure-power` samples
+the board's on-chip power monitor (via `tegrastats`) during each request and
+reports **measured** joules next to the estimate.
+
+```sh
+joule serve --upstream http://localhost:11434 --measure-power
+```
+
+```http
+x-joule-energy-j:   15.5000        # estimated from tokens
+x-joule-measured-j:  7.2000        # integrated from real board power
+```
+
+Live board power and cumulative measured energy are also exported as
+`joule_board_power_watts` and `joule_measured_energy_joules_total{model}`.
+
+Which power rails to sum is configurable, because they differ by board and
+JetPack version — the sampler logs the rails it sees on startup so you can pick.
+Defaults target **Jetson Orin AGX** compute rails (`VDD_GPU_SOC` + `VDD_CPU_CV`);
+use `VIN_SYS_5V0` for whole-board input:
+
+```json
+{ "measure_power": true, "power_rails": ["VDD_GPU_SOC", "VDD_CPU_CV"], "power_interval_ms": 500 }
+```
+
+If `tegrastats` isn't present, Joule logs a warning and falls back to estimates —
+measured power never blocks serving. One caveat: under **concurrent** requests
+the whole-board draw is attributed to each, so measured energy is per-*window*,
+cleanest when requests run one at a time.
+
 ## What Joule does
 
 Phase 1 is the measuring core; caching, optimization, and routing build on it.
@@ -600,6 +633,7 @@ joule models
 | `--max-retries` | `JOULE_MAX_RETRIES` | `2` | retries on transient upstream failure |
 | `--api-key` | `JOULE_UPSTREAM_API_KEY` | — | fallback upstream credential |
 | `--proxy-api-key` | `JOULE_PROXY_API_KEY` | — | require this key in the `x-joule-key` header (else open) |
+| `--measure-power` | — | off | sample real board power (Jetson `tegrastats`) → `x-joule-measured-j` |
 | `--db` | `JOULE_DB` | `joule.db` | SQLite request log |
 | `--grid-intensity` | `JOULE_GRID_INTENSITY` | `445` | g CO₂ / kWh (IEA 2024 global avg) |
 

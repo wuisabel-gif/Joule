@@ -127,6 +127,14 @@ fn default_carbon_poll_secs() -> u64 {
     300
 }
 
+fn default_power_interval_ms() -> u64 {
+    500
+}
+
+fn default_tegrastats_path() -> String {
+    "tegrastats".to_string()
+}
+
 /// Environment variable holding the live carbon-feed auth token (kept out of
 /// config files so it never lands in version control).
 const CARBON_TOKEN_ENV: &str = "JOULE_CARBON_TOKEN";
@@ -224,6 +232,20 @@ pub struct Config {
     /// checks excepted). Prefer the `JOULE_PROXY_API_KEY` env var. None = open.
     #[serde(default)]
     pub proxy_api_key: Option<String>,
+    /// Sample real board power (NVIDIA Jetson `tegrastats`) and report measured
+    /// energy alongside the estimate. Off by default; needs the hardware.
+    #[serde(default)]
+    pub measure_power: bool,
+    /// `tegrastats` power rails to sum (see the startup log for what your board
+    /// exposes). Defaults to Orin AGX compute rails.
+    #[serde(default = "crate::power::default_rails")]
+    pub power_rails: Vec<String>,
+    /// Power sampling interval, milliseconds.
+    #[serde(default = "default_power_interval_ms")]
+    pub power_interval_ms: u64,
+    /// Path to the `tegrastats` binary.
+    #[serde(default = "default_tegrastats_path")]
+    pub tegrastats_path: String,
 }
 
 impl Config {
@@ -256,6 +278,7 @@ impl Config {
         max_retries: u32,
         grid_intensity: f64,
         proxy_api_key: Option<String>,
+        measure_power: bool,
     ) -> Self {
         Config {
             providers: vec![ProviderConfig {
@@ -296,6 +319,10 @@ impl Config {
             circuit_cooldown_secs: default_circuit_cooldown_secs(),
             grid_intensity,
             proxy_api_key,
+            measure_power,
+            power_rails: crate::power::default_rails(),
+            power_interval_ms: default_power_interval_ms(),
+            tegrastats_path: default_tegrastats_path(),
         }
     }
 
@@ -363,6 +390,12 @@ impl Config {
     /// Build the configured response cache.
     pub fn build_cache(&self) -> Cache {
         Cache::new(self.cache, self.cache_capacity, self.cache_ttl())
+    }
+
+    /// Build the power meter if measured power is enabled.
+    pub fn build_power_meter(&self) -> Option<Arc<crate::power::PowerMeter>> {
+        self.measure_power
+            .then(|| Arc::new(crate::power::PowerMeter::new(self.power_rails.clone())))
     }
 
     /// The configured proxy key (env `JOULE_PROXY_API_KEY` wins over config).

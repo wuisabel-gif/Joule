@@ -4,8 +4,8 @@
 //! latency — all labelled by model so per-model efficiency is observable.
 
 use prometheus::{
-    CounterVec, Encoder, GaugeVec, HistogramOpts, HistogramVec, IntCounterVec, IntGaugeVec, Opts,
-    Registry, TextEncoder,
+    CounterVec, Encoder, Gauge, GaugeVec, HistogramOpts, HistogramVec, IntCounterVec, IntGaugeVec,
+    Opts, Registry, TextEncoder,
 };
 
 /// All Joule metrics plus the registry that renders them.
@@ -24,6 +24,8 @@ pub struct Metrics {
     upstream_retries_total: IntCounterVec,
     circuit_open: IntGaugeVec,
     grid_intensity: GaugeVec,
+    measured_energy_joules_total: CounterVec,
+    board_power_watts: Gauge,
 }
 
 impl Metrics {
@@ -127,6 +129,21 @@ impl Metrics {
         )
         .expect("valid metric");
 
+        let measured_energy_joules_total = CounterVec::new(
+            Opts::new(
+                "joule_measured_energy_joules_total",
+                "Measured (not estimated) energy from on-board power sampling, in joules.",
+            ),
+            &["model"],
+        )
+        .expect("valid metric");
+
+        let board_power_watts = Gauge::new(
+            "joule_board_power_watts",
+            "Latest measured board power draw (watts), from the power sampler.",
+        )
+        .expect("valid metric");
+
         registry
             .register(Box::new(requests_total.clone()))
             .expect("register");
@@ -166,6 +183,12 @@ impl Metrics {
         registry
             .register(Box::new(grid_intensity.clone()))
             .expect("register");
+        registry
+            .register(Box::new(measured_energy_joules_total.clone()))
+            .expect("register");
+        registry
+            .register(Box::new(board_power_watts.clone()))
+            .expect("register");
 
         Self {
             registry,
@@ -182,6 +205,8 @@ impl Metrics {
             upstream_retries_total,
             circuit_open,
             grid_intensity,
+            measured_energy_joules_total,
+            board_power_watts,
         }
     }
 
@@ -265,6 +290,20 @@ impl Metrics {
         self.grid_intensity
             .with_label_values(&[region])
             .set(gco2_per_kwh);
+    }
+
+    /// Record measured energy (joules) attributed to a request.
+    pub fn observe_measured(&self, model: &str, energy_j: f64) {
+        if energy_j > 0.0 {
+            self.measured_energy_joules_total
+                .with_label_values(&[model])
+                .inc_by(energy_j);
+        }
+    }
+
+    /// Record the latest measured board power draw (watts).
+    pub fn set_board_power(&self, watts: f64) {
+        self.board_power_watts.set(watts);
     }
 
     /// Render the registry in the Prometheus text exposition format.

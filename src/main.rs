@@ -13,6 +13,7 @@ mod estimator;
 mod eval;
 mod metrics;
 mod optimizer;
+mod power;
 mod provider;
 mod proxy;
 mod resilience;
@@ -80,6 +81,7 @@ async fn serve(args: ServeArgs) -> Result<()> {
             args.max_retries,
             args.grid_intensity,
             args.proxy_api_key,
+            args.measure_power,
         ),
     };
 
@@ -99,6 +101,23 @@ async fn serve(args: ServeArgs) -> Result<()> {
 
     let store = Store::open(&args.db).with_context(|| format!("opening database {}", args.db))?;
     let metrics = Arc::new(Metrics::new());
+
+    // If measured power is enabled, start the background sampler feeding the
+    // shared meter. Absent it (or the tegrastats tool), Joule reports estimates.
+    let power = config.build_power_meter();
+    if let Some(meter) = &power {
+        info!(
+            rails = ?meter.rails(),
+            interval_ms = config.power_interval_ms,
+            "measured power enabled (tegrastats)",
+        );
+        power::spawn_sampler(
+            meter.clone(),
+            metrics.clone(),
+            config.tegrastats_path.clone(),
+            config.power_interval_ms,
+        );
+    }
 
     // If a live carbon feed is configured, refresh the shared carbon map in the
     // background. Absent one, the `carbon` router uses the static table.
@@ -143,6 +162,7 @@ async fn serve(args: ServeArgs) -> Result<()> {
         max_retries: config.max_retries,
         breakers: Arc::new(breakers),
         proxy_key,
+        power,
     };
 
     let app = proxy::router(state);

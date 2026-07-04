@@ -24,6 +24,7 @@ use crate::error::AppError;
 use crate::estimator::{EnergyEstimate, Estimator};
 use crate::metrics::Metrics;
 use crate::optimizer::Optimizer;
+use crate::power::PowerMeter;
 use crate::provider::ProviderRegistry;
 use crate::resilience::Breakers;
 use crate::router::Router;
@@ -53,6 +54,8 @@ pub struct AppState {
     /// When set, clients must present this key in the `x-joule-key` header
     /// (health checks excepted). None = open proxy (the default).
     pub proxy_key: Option<Arc<str>>,
+    /// Measured-power meter (self-hosted Jetson). None = estimate only.
+    pub power: Option<Arc<PowerMeter>>,
 }
 
 /// Prompt-optimization outcome carried alongside a request.
@@ -200,6 +203,9 @@ async fn chat_completions(
     body: Bytes,
 ) -> Result<Response, AppError> {
     let started = Instant::now();
+    // Snapshot measured energy at request start; the delta at the end is this
+    // request's measured cost (exact when requests run serially).
+    let power_start_mj = state.power.as_ref().map(|p| p.energy_mj());
     let mut request: Value = serde_json::from_slice(&body)
         .map_err(|e| AppError::new(StatusCode::BAD_REQUEST, format!("invalid JSON body: {e}")))?;
 
@@ -308,6 +314,7 @@ async fn chat_completions(
         optimization,
         cache_key,
         semantic_embedding,
+        power_start_mj,
     };
 
     if is_stream {
@@ -331,6 +338,18 @@ struct RequestCtx {
     cache_key: Option<Vec<u8>>,
     /// Prompt embedding to store in the semantic cache on a miss, if enabled.
     semantic_embedding: Option<Vec<f32>>,
+    /// Measured energy (mJ) at request start, if power sampling is on.
+    power_start_mj: Option<u64>,
+}
+
+impl RequestCtx {
+    /// Measured energy for this request in joules: the meter delta since start.
+    /// `None` when power sampling is off.
+    fn measured_j(&self, state: &AppState) -> Option<f64> {
+        let start = self.power_start_mj?;
+        let meter = state.power.as_ref()?;
+        Some(meter.energy_mj().saturating_sub(start) as f64 / 1000.0)
+    }
 }
 
 /// Handle a non-streaming upstream response: read it fully, translate it to
@@ -399,11 +418,21 @@ async fn buffered_response(
         }
     }
 
+    // Measured energy (self-hosted power sampling): report it next to the
+    // estimate so the two can be compared per request.
+    let measured_j = ctx.measured_j(&state);
+    if let Some(mj) = measured_j {
+        state.metrics.observe_measured(&ctx.model, mj);
+    }
+
     let builder = Response::builder()
         .status(StatusCode::from_u16(ctx.status).unwrap_or(StatusCode::BAD_GATEWAY))
         .header(CONTENT_TYPE, &ctx.content_type)
         .header("x-joule-cache", "miss");
-    let builder = with_joule_headers(builder, &estimate, source, false, &ctx);
+    let mut builder = with_joule_headers(builder, &estimate, source, false, &ctx);
+    if let Some(mj) = measured_j {
+        builder = builder.header("x-joule-measured-j", format!("{mj:.4}"));
+    }
 
     builder
         .body(Body::from(out))
@@ -535,6 +564,9 @@ fn stream_response(
             ),
         };
         state.finalize(&ctx.model, ctx.status, input_tokens, output_tokens, latency, true, source, &ctx.optimization);
+        if let Some(mj) = ctx.measured_j(&state) {
+            state.metrics.observe_measured(&ctx.model, mj);
+        }
     };
 
     builder

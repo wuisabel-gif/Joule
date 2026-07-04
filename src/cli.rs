@@ -154,6 +154,11 @@ pub struct ServeArgs {
     #[arg(long, env = "JOULE_PROXY_API_KEY")]
     pub proxy_api_key: Option<String>,
 
+    /// Sample real board power via `tegrastats` (NVIDIA Jetson) and report
+    /// measured energy (`x-joule-measured-j`) next to the estimate.
+    #[arg(long)]
+    pub measure_power: bool,
+
     /// Path to the SQLite request log.
     #[arg(long, env = "JOULE_DB", default_value = "joule.db")]
     pub db: String,
