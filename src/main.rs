@@ -207,10 +207,18 @@ fn optimize(args: OptimizeArgs) -> Result<()> {
         }
     };
 
-    let mut request = json!({
-        "model": args.model,
-        "messages": [{ "role": "user", "content": text }],
-    });
+    // A whole chat request (`{"messages": [...]}`) is optimized as-is, so
+    // conversation-level passes like context-recall can be tried offline.
+    let mut request = match serde_json::from_str::<serde_json::Value>(&text) {
+        Ok(mut req) if req.get("messages").is_some_and(|m| m.is_array()) => {
+            req["model"] = json!(args.model);
+            req
+        }
+        _ => json!({
+            "model": args.model,
+            "messages": [{ "role": "user", "content": text }],
+        }),
+    };
 
     let optimizer = Optimizer::new(args.level);
     let report = optimizer.optimize(&mut request);

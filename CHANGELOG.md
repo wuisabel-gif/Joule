@@ -4,6 +4,25 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] — 2026-09-30
+
+### Added
+- **`context-recall` optimizer pass** (`ultra`) — for long chats, keeps the
+  system prompt and the last 6 messages, and from older turns keeps only the 4
+  exchanges most relevant to the latest user message, ranked by
+  [MemoryWhale](https://github.com/wuisabel-gif/MemWhale)'s retrieval engine
+  (`memorywhale-core`). Tool calls and tool results are never dropped, and an
+  exchange is never split. On a 10-topic debugging chat it cut the prompt from
+  3,400 to about 1,750 tokens.
+- `joule optimize` accepts a whole chat request (`{"messages": [...]}`) on
+  stdin, so conversation-level passes can be tried offline.
+
+### Changed
+- The crate is published as **`joule-proxy`** (`cargo install joule-proxy`);
+  the `joule` name on crates.io belongs to an unrelated project. The binary is
+  still `joule`.
+- SQLite binding upgraded to rusqlite 0.40.
+
 ## [0.6.0] — 2026-07-03
 
 ### Added
@@ -159,6 +178,7 @@ pieces of Phases 2–3.
   model batching, hardware generation, or data-center overhead.
 - No semantic cache or carbon-aware scheduling yet (Phases 2 and 4).
 
+[0.7.0]: https://github.com/wuisabel-gif/Joule/releases/tag/v0.7.0
 [0.6.0]: https://github.com/wuisabel-gif/Joule/releases/tag/v0.6.0
 [0.5.0]: https://github.com/wuisabel-gif/Joule/releases/tag/v0.5.0
 [0.4.0]: https://github.com/wuisabel-gif/Joule/releases/tag/v0.4.0
