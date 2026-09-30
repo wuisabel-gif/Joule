@@ -662,6 +662,9 @@ fn with_joule_headers(
 /// timeout → retries with backoff. Returns the upstream response, or a
 /// ready-to-return error response (fast-fail 503 when the breaker is open, or a
 /// 502 when retries are exhausted).
+// The error is a finished response handed straight back to axum, once per
+// request; boxing it would only add an allocation.
+#[allow(clippy::result_large_err)]
 async fn resilient_send(
     state: &AppState,
     provider: &str,

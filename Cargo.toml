@@ -1,10 +1,14 @@
 [package]
-name = "joule"
-version = "0.6.0"
+name = "joule-proxy"
+version = "0.7.0"
 edition = "2021"
 description = "Energy-aware optimization middleware for LLM inference."
 license = "Apache-2.0"
 readme = "README.md"
+repository = "https://github.com/wuisabel-gif/Joule"
+keywords = ["llm", "energy", "proxy", "openai", "carbon"]
+categories = ["command-line-utilities", "web-programming::http-server"]
+exclude = ["logo.png", "index.html", "site/", "grafana/"]
 
 [[bin]]
 name = "joule"
@@ -17,7 +21,9 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 reqwest = { version = "0.12", features = ["json", "stream"] }
 clap = { version = "4", features = ["derive", "env"] }
-rusqlite = { version = "0.31", features = ["bundled"] }
+rusqlite = { version = "0.40", features = ["bundled", "fallible_uint"] }
+memorywhale-core = "0.8"
+chrono = "0.4"
 prometheus = "0.13"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }

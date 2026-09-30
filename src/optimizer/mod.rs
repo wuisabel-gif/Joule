@@ -14,6 +14,7 @@
 //! many prompt tokens it saved.
 
 mod passes;
+mod recall;
 
 use serde_json::Value;
 

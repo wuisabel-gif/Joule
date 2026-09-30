@@ -183,7 +183,8 @@ pub struct OptimizeArgs {
     #[arg(long, default_value = "gpt-4o")]
     pub model: String,
 
-    /// Prompt text to optimize. If omitted, reads from stdin.
+    /// Prompt text to optimize, or a JSON chat request with `messages`. If
+    /// omitted, reads from stdin.
     #[arg(long)]
     pub text: Option<String>,
 

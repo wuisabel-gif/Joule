@@ -240,6 +240,13 @@ Per-request results are also returned to the client as response headers:
 brew install wuisabel-gif/joule/joule
 ```
 
+**Cargo** (the crate is `joule-proxy`; the `joule` crate on crates.io is an
+unrelated project):
+
+```sh
+cargo install joule-proxy
+```
+
 **Prebuilt binary** — grab one for your platform from the
 [latest release](https://github.com/wuisabel-gif/Joule/releases/latest)
 (Linux x86-64, macOS arm64/x86-64, Windows x86-64):
@@ -325,7 +332,7 @@ The cheapest token is the one you never generate. Joule optimizes the prompt
 | `off` | none | — |
 | `lite` (default) | `collapse-whitespace`, `dedup-messages` | yes — formatting only |
 | `full` | + `collapse-repeated-lines`, `dedup-lines`, `strip-filler` | yes — content cleanup |
-| `ultra` | + `output-limit`, `strip-reasoning`, `brevity-hint` | no — changes model behaviour |
+| `ultra` | + `context-recall`, `output-limit`, `strip-reasoning`, `brevity-hint` | no — changes model behaviour |
 
 `lite`/`full` only remove redundancy (whitespace, duplicate messages, repeated
 lines, filler like "could you please"). `ultra` targets the biggest lever —
@@ -334,12 +341,24 @@ lines, filler like "could you please"). `ultra` targets the biggest lever —
 (`strip-reasoning`), and asks the model to answer directly (`brevity-hint`).
 These change behaviour, so `ultra` is opt-in and every pass is reported.
 
+`ultra` also sends only the history that matters (`context-recall`). Long chats
+resend every earlier turn on every request. Joule keeps the system prompt and
+the last few turns as they are, and from the older turns keeps only the 4
+exchanges most relevant to the latest question, ranked by
+[MemoryWhale](https://github.com/wuisabel-gif/MemWhale)'s retrieval engine
+(`memorywhale-core`, measured on the public LongMemEval benchmark). Tool calls
+and their results are never dropped. On a 10-topic debugging chat that ends by
+asking about one earlier topic, this cut the prompt from 3,400 to about 1,750
+tokens. Check that answers hold up on your own traffic with `joule eval`.
+
+```sh
+joule optimize --level ultra < chat.json   # a chat request with "messages"
+```
+
 > Not automated on purpose: **stop sequences** (auto-injecting one truncates
-> real answers), **history truncation / summarization** (blind truncation loses
-> context; real summarization needs a model call), and **dropping few-shot
-> examples or retrieving only the relevant context** (that needs *memory /
-> retrieval* — the job of a sibling like MemWhale, not a stateless optimizer).
-> Joule only applies transforms it can make safely and explain.
+> real answers), **summarization** (it needs a model call), and **dropping
+> few-shot examples**. Joule only applies transforms it can make safely and
+> explain.
 
 Nothing happens invisibly: each request returns `x-joule-optimized`,
 `x-joule-prompt-saved-tokens`, `x-joule-energy-saved-j`, and

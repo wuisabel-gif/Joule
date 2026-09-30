@@ -13,6 +13,10 @@ use super::{OptLevel, Pass};
 /// The default pipeline, in execution order.
 pub fn default_passes() -> Vec<Box<dyn Pass>> {
     vec![
+        Box::new(super::recall::ContextRecall {
+            keep_recent: 6,
+            keep_relevant: 4,
+        }),
         Box::new(CollapseWhitespace),
         Box::new(DedupMessages),
         Box::new(CollapseRepeatedLines),
