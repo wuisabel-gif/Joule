@@ -41,9 +41,9 @@ Deterministic; full numbers in [`results.json`](results.json).
 | Full history | 103,674 | 0% | 1.000 | 1.000 |
 | `context-recall`, 64 exchanges | 31,303 | 69.8% | **0.913** | **0.981** |
 | Truncation, same tokens | 31,088 | 70.0% | 0.217 | 0.566 |
-| `context-recall`, 16 exchanges | 8,956 | 91.4% | **0.806** | **0.947** |
+| `context-recall`, 16 exchanges (default) | 8,956 | 91.4% | **0.806** | **0.947** |
 | Truncation, same tokens | 8,735 | 91.6% | 0.049 | 0.168 |
-| `context-recall`, 4 exchanges (default) | 3,249 | 96.9% | **0.585** | **0.821** |
+| `context-recall`, 4 exchanges (0.7.0 default) | 3,249 | 96.9% | **0.585** | **0.821** |
 | Truncation, same tokens | 3,013 | 97.1% | 0.013 | 0.038 |
 
 **At the same cost, ranking keeps the answer far more often than truncation.**
@@ -52,10 +52,10 @@ for 81% of questions; truncation keeps it for 5%. LongMemEval places answer
 sessions anywhere in the history, so dropping the oldest turns usually drops
 the answer.
 
-**The default of 4 exchanges is aggressive.** It saves 97% but loses some
-evidence for 41% of these questions. LongMemEval histories are far longer than
-a typical chat (about 500 messages), so on everyday traffic 4 exchanges cuts
-much less; but on long histories, a larger `k` is the safer trade.
+**4 exchanges was too aggressive, so the default is now 16** (0.7.1). Keeping
+4 saves 97% but loses some evidence for 41% of these questions; 16 still saves
+91% and keeps all evidence for 81%. LongMemEval histories (about 500 messages)
+are far longer than a typical chat, where the pass cuts much less.
 
 ## What this does not measure
 
