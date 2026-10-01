@@ -15,7 +15,9 @@ pub fn default_passes() -> Vec<Box<dyn Pass>> {
     vec![
         Box::new(super::recall::ContextRecall {
             keep_recent: 6,
-            keep_relevant: 4,
+            // 16 per the LongMemEval benchmark (bench/longmemeval): 4 kept all
+            // answer evidence for 59% of questions, 16 for 81%.
+            keep_relevant: 16,
         }),
         Box::new(CollapseWhitespace),
         Box::new(DedupMessages),

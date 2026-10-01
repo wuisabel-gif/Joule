@@ -343,16 +343,16 @@ These change behaviour, so `ultra` is opt-in and every pass is reported.
 
 `ultra` also sends only the history that matters (`context-recall`). Long chats
 resend every earlier turn on every request. Joule keeps the system prompt and
-the last few turns as they are, and from the older turns keeps only the 4
+the last few turns as they are, and from the older turns keeps only the 16
 exchanges most relevant to the latest question, ranked by
 [MemoryWhale](https://github.com/wuisabel-gif/MemWhale)'s retrieval engine
 (`memorywhale-core`). Tool calls and their results are never dropped.
 
 Measured on the public [LongMemEval](bench/longmemeval/README.md) benchmark
-(470 questions, ~104,000-token histories): keeping 16 older exchanges cut the
-prompt by 91% and kept all of the answer's evidence for 81% of questions, where
-plain truncation to the same size kept it for 5%. The default of 4 exchanges
-cuts 97% but keeps all evidence for only 59% on histories this long. That
+(470 questions, ~104,000-token histories): the default of 16 older exchanges
+cut the prompt by 91% and kept all of the answer's evidence for 81% of
+questions, where plain truncation to the same size kept it for 5%. Keeping only
+4 (the 0.7.0 default) cuts 97% but keeps all evidence for just 59%. That
 measures what reaches the model, not answer accuracy; check that on your own
 traffic with `joule eval`.
 

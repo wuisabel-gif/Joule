@@ -6,6 +6,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.7.1] — 2026-09-30
+
+### Changed
+- `context-recall` keeps the **16** most relevant older exchanges instead of 4.
+  On LongMemEval, 4 kept all answer evidence for 59% of questions and 16 for
+  81%, while still cutting 91% of the prompt.
+
 ### Added
 - **LongMemEval benchmark for `context-recall`** (`bench/longmemeval/`,
   `cargo run --release --example longmemeval`): on 470 public questions with
@@ -189,6 +196,7 @@ pieces of Phases 2–3.
   model batching, hardware generation, or data-center overhead.
 - No semantic cache or carbon-aware scheduling yet (Phases 2 and 4).
 
+[0.7.1]: https://github.com/wuisabel-gif/Joule/releases/tag/v0.7.1
 [0.7.0]: https://github.com/wuisabel-gif/Joule/releases/tag/v0.7.0
 [0.6.0]: https://github.com/wuisabel-gif/Joule/releases/tag/v0.6.0
 [0.5.0]: https://github.com/wuisabel-gif/Joule/releases/tag/v0.5.0
