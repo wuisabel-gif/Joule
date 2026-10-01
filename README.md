@@ -346,10 +346,15 @@ resend every earlier turn on every request. Joule keeps the system prompt and
 the last few turns as they are, and from the older turns keeps only the 4
 exchanges most relevant to the latest question, ranked by
 [MemoryWhale](https://github.com/wuisabel-gif/MemWhale)'s retrieval engine
-(`memorywhale-core`, measured on the public LongMemEval benchmark). Tool calls
-and their results are never dropped. On a 10-topic debugging chat that ends by
-asking about one earlier topic, this cut the prompt from 3,400 to about 1,750
-tokens. Check that answers hold up on your own traffic with `joule eval`.
+(`memorywhale-core`). Tool calls and their results are never dropped.
+
+Measured on the public [LongMemEval](bench/longmemeval/README.md) benchmark
+(470 questions, ~104,000-token histories): keeping 16 older exchanges cut the
+prompt by 91% and kept all of the answer's evidence for 81% of questions, where
+plain truncation to the same size kept it for 5%. The default of 4 exchanges
+cuts 97% but keeps all evidence for only 59% on histories this long. That
+measures what reaches the model, not answer accuracy; check that on your own
+traffic with `joule eval`.
 
 ```sh
 joule optimize --level ultra < chat.json   # a chat request with "messages"

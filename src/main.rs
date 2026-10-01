@@ -12,7 +12,6 @@ mod error;
 mod estimator;
 mod eval;
 mod metrics;
-mod optimizer;
 mod power;
 mod provider;
 mod proxy;
@@ -20,7 +19,8 @@ mod resilience;
 mod router;
 mod semantic;
 mod store;
-mod tokens;
+
+use joule_proxy::{optimizer, tokens};
 
 use std::io::Read;
 use std::sync::Arc;
