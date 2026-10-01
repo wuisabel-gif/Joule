@@ -1,0 +1,56 @@
+{
+  "dataset": "longmemeval_s.json",
+  "keep_recent": 6,
+  "skipped_no_evidence": 0,
+  "systems": {
+    "context-recall, 16 exchanges": {
+      "evidence_all": 0.8063829787234043,
+      "evidence_any": 0.9468085106382979,
+      "questions": 470,
+      "saved_pct": 91.36098843594945,
+      "tokens_after": 8956.004255319149,
+      "tokens_before": 103674.30425531915
+    },
+    "context-recall, 4 exchanges": {
+      "evidence_all": 0.5851063829787234,
+      "evidence_any": 0.8212765957446808,
+      "questions": 470,
+      "saved_pct": 96.86567248526673,
+      "tokens_after": 3249.2893617021277,
+      "tokens_before": 103674.30425531915
+    },
+    "context-recall, 64 exchanges": {
+      "evidence_all": 0.9127659574468086,
+      "evidence_any": 0.9808510638297873,
+      "questions": 470,
+      "saved_pct": 69.80569353360455,
+      "tokens_after": 31302.814893617022,
+      "tokens_before": 103674.30425531915
+    },
+    "truncation at the same tokens, 16": {
+      "evidence_all": 0.04893617021276596,
+      "evidence_any": 0.16808510638297872,
+      "questions": 470,
+      "saved_pct": 91.57429345057282,
+      "tokens_after": 8734.904255319148,
+      "tokens_before": 103674.30425531915
+    },
+    "truncation at the same tokens, 4": {
+      "evidence_all": 0.01276595744680851,
+      "evidence_any": 0.03829787234042553,
+      "questions": 470,
+      "saved_pct": 97.09379312179881,
+      "tokens_after": 3013.040425531915,
+      "tokens_before": 103674.30425531915
+    },
+    "truncation at the same tokens, 64": {
+      "evidence_all": 0.2170212765957447,
+      "evidence_any": 0.5659574468085107,
+      "questions": 470,
+      "saved_pct": 70.01276853459986,
+      "tokens_after": 31088.32340425532,
+      "tokens_before": 103674.30425531915
+    }
+  },
+  "tokenizer_model": "gpt-4o"
+}

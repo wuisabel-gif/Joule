@@ -4,6 +4,17 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **LongMemEval benchmark for `context-recall`** (`bench/longmemeval/`,
+  `cargo run --release --example longmemeval`): on 470 public questions with
+  ~104,000-token histories, keeping 16 older exchanges cut 91% of the prompt
+  and kept all answer evidence for 81% of questions, against 5% for truncation
+  at the same size. Replaces the README's single-chat demo number.
+- A library target (`joule_proxy::optimizer`, `joule_proxy::tokens`) so
+  benchmarks can call the optimizer directly.
+
 ## [0.7.0] — 2026-09-30
 
 ### Added
