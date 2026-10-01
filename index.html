@@ -3,20 +3,21 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Joule — Energy-aware optimization for LLM inference</title>
-<meta name="description" content="Joule makes energy a first-class metric in AI applications. It measures the joules and carbon behind every inference, then optimizes, caches, and routes to use less — without giving up answer quality.">
+<title>Joule: energy-aware optimization for LLM inference</title>
+<meta name="description" content="Joule makes energy a first-class metric in AI applications. It measures the joules and carbon behind every inference, then optimizes, caches, and routes to use less, without giving up answer quality.">
 <meta name="theme-color" content="#0b110f">
+<script>document.documentElement.classList.add("js")</script>
 <link rel="icon" href="logo.png" type="image/png">
 <link rel="apple-touch-icon" href="logo.png">
 <link rel="canonical" href="https://wuisabel-gif.github.io/Joule/">
 <meta property="og:type" content="website">
-<meta property="og:title" content="Joule — energy-aware optimization for LLM inference">
-<meta property="og:description" content="Measure the joules, CO₂, and cost of every LLM request — then optimize and route to greener models. An OpenAI-compatible proxy in Rust.">
+<meta property="og:title" content="Joule: energy-aware optimization for LLM inference">
+<meta property="og:description" content="Measure the joules, CO₂, and cost of every LLM request, then optimize and route to greener models. An OpenAI-compatible proxy in Rust.">
 <meta property="og:url" content="https://wuisabel-gif.github.io/Joule/">
 <meta property="og:image" content="https://wuisabel-gif.github.io/Joule/site/assets/joule-og.png">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="Joule — energy-aware optimization for LLM inference">
-<meta name="twitter:description" content="Measure the joules, CO₂, and cost of every LLM request — then optimize and route to greener models.">
+<meta name="twitter:title" content="Joule: energy-aware optimization for LLM inference">
+<meta name="twitter:description" content="Measure the joules, CO₂, and cost of every LLM request, then optimize and route to greener models.">
 <meta name="twitter:image" content="https://wuisabel-gif.github.io/Joule/site/assets/joule-og.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -244,7 +245,7 @@
   /* ---------- principles ---------- */
   .principles{display:grid;gap:0;margin-top:var(--s-2xl);border-top:1px solid var(--line)}
   .principle{
-    display:grid;grid-template-columns:88px 1fr;gap:var(--s-xl);
+    display:grid;grid-template-columns:88px minmax(0,1fr);gap:var(--s-xl);
     padding:var(--s-xl) 0;border-bottom:1px solid var(--line);align-items:start;
     transition:background .25s var(--ease);
   }
@@ -309,7 +310,8 @@
   .console-top .path{font:500 0.72rem/1 var(--mono);color:var(--ink-3);margin-left:6px}
   .console-body{padding:var(--s-lg) var(--s-md);font-size:0.86rem;line-height:1.9}
   .console-body .title{color:var(--ink);font-weight:600;letter-spacing:0.02em}
-  .line{display:flex;gap:10px;opacity:0;transform:translateY(4px)}
+  .line{display:flex;gap:10px}
+  .js .line{opacity:0;transform:translateY(4px)}
   .line.in{opacity:1;transform:none;transition:opacity .4s var(--ease),transform .4s var(--ease)}
   .line .tick{color:var(--signal)}
   .line span{color:var(--ink-2)}
@@ -376,8 +378,43 @@
   .saver .pulse{width:8px;height:8px;border-radius:50%;background:var(--signal);box-shadow:0 0 0 0 rgba(84,232,166,0.5);animation:pulse 2.6s var(--ease) infinite}
   @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(84,232,166,0.4)}70%{box-shadow:0 0 0 9px rgba(84,232,166,0)}100%{box-shadow:0 0 0 0 rgba(84,232,166,0)}}
 
+
+  /* ---------- measured (benchmark chart) ---------- */
+  .bench{margin-top:var(--s-2xl);max-width:880px}
+  .bench-legend{display:flex;flex-wrap:wrap;gap:var(--s-lg);font:500 0.78rem/1 var(--mono);color:var(--ink-2);margin-bottom:var(--s-lg)}
+  .bench-legend span{display:inline-flex;align-items:center;gap:8px}
+  .bench-legend i{width:12px;height:12px;border-radius:3px;display:inline-block}
+  .bench-row{display:grid;grid-template-columns:170px 1fr;gap:var(--s-md);align-items:center;padding-block:var(--s-md);border-top:1px solid var(--line)}
+  .bench-row:last-of-type{border-bottom:1px solid var(--line)}
+  .bench-k{font:500 0.82rem/1.35 var(--mono);color:var(--ink-2)}
+  .bench-k b{display:block;color:var(--ink);font:600 1.05rem/1.2 var(--display)}
+  .bench-bars{display:grid;gap:2px}
+  .bar{position:relative;height:26px;display:flex;align-items:center;outline-offset:2px}
+  .bar i{display:block;height:100%;border-radius:0 4px 4px 0;min-width:4px}
+  .bar.recall i{background:#34a673}
+  .bar.trunc i{background:#c2843a}
+  .bar span{margin-left:10px;font:500 0.8rem/1 var(--mono);color:var(--ink-2);white-space:nowrap}
+  .bar span b{color:var(--ink);font-variant-numeric:tabular-nums}
+  .bar[data-tip]:hover::after,.bar[data-tip]:focus-visible::after{content:attr(data-tip);position:absolute;left:0;bottom:calc(100% + 6px);z-index:var(--z-overlay);background:var(--surface-2);border:1px solid var(--line-strong);color:var(--ink);font:500 0.75rem/1.4 var(--mono);padding:6px 9px;border-radius:6px;white-space:nowrap}
+  .bench-note{color:var(--ink-3);font-size:0.86rem;margin-top:var(--s-md);max-width:70ch}
+  .bench-note code{font:0.8rem var(--mono);color:var(--ink-2)}
+  .bench details{margin-top:var(--s-md);color:var(--ink-2);font:0.82rem/1.5 var(--mono)}
+  .bench summary{cursor:pointer;color:var(--ink-3)}
+  .bench table{border-collapse:collapse;margin-top:var(--s-sm)}
+  .bench th,.bench td{text-align:left;padding:4px 14px 4px 0;border-bottom:1px solid var(--line)}
+  @media (max-width:640px){.bench-row{grid-template-columns:1fr}}
+  /* ---------- family ---------- */
+  .family{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:var(--s-md);margin-top:var(--s-2xl)}
+  .fam{border:1px solid var(--line);border-radius:var(--r-panel);background:var(--surface);padding:var(--s-lg)}
+  .fam h3{font:600 1.15rem/1.2 var(--display);margin:0 0 var(--s-sm);color:var(--ink)}
+  .fam h3 a{color:inherit;text-decoration:none}
+  .fam h3 a:hover{text-decoration:underline}
+  .fam p{color:var(--ink-2);margin:0;font-size:0.93rem;line-height:1.55}
+  .fam code{font:0.82rem var(--mono);color:var(--signal)}
+  .install{display:grid;gap:var(--s-sm);margin-top:var(--s-lg)}
+  .install .binary{margin-top:0}
   /* ---------- reveal ---------- */
-  .reveal{opacity:0;transform:translateY(18px)}
+  .js .reveal{opacity:0;transform:translateY(18px)}
   .reveal.show{opacity:1;transform:none;transition:opacity .7s var(--ease),transform .7s var(--ease)}
 
   /* ---------- responsive ---------- */
@@ -388,6 +425,8 @@
     .stat:nth-child(2),.stat:nth-child(3){border-left:0}
     .opt-grid{grid-template-columns:1fr}
     .mods{grid-template-columns:1fr}
+    .nav-links{gap:var(--s-md)}
+    .nav-links .meter{display:none}
   }
   @media (max-width:720px){
     .nav-links{
@@ -409,7 +448,7 @@
     .nav-toggle[aria-expanded="true"] span::after{transform:rotate(-45deg) translateY(-1.5px)}
     .premise-grid{grid-template-columns:1fr}
     .stat{border-top:1px solid var(--line);padding-top:var(--s-lg)}
-    .principle{grid-template-columns:1fr;gap:var(--s-sm)}
+    .principle{grid-template-columns:minmax(0,1fr);gap:var(--s-sm)}
     .principle .idx{padding-top:0}
     .phase{grid-template-columns:1fr;gap:var(--s-md)}
     .triad{grid-template-columns:1fr;gap:var(--s-lg)}
@@ -419,8 +458,8 @@
 
   @media (prefers-reduced-motion:reduce){
     *{animation-duration:0.001ms !important;animation-iteration-count:1 !important;transition-duration:0.001ms !important}
-    .reveal{opacity:1;transform:none}
-    .line{opacity:1;transform:none}
+    .js .reveal{opacity:1;transform:none}
+    .js .line{opacity:1;transform:none}
   }
 </style>
 </head>
@@ -437,6 +476,7 @@
       <a href="#vision">Vision</a>
       <a href="#principles">Principles</a>
       <a href="#architecture">Architecture</a>
+      <a href="#measured">Measured</a>
       <a href="#roadmap">Roadmap</a>
       <div class="meter" aria-hidden="true"><span>this page</span> <b id="navmeter">0.0</b> J</div>
     </nav>
@@ -458,18 +498,18 @@
     <div class="wrap hero-inner">
       <span class="eyebrow">Energy-aware optimization for LLM inference</span>
       <h1>How many <span class="glow">joules</span> did this response cost?</h1>
-      <p class="lede">Joule is middleware that makes energy a first-class metric in AI applications. It measures the energy and carbon behind every inference, then optimizes, caches, and routes requests to use less electricity — without trading away answer quality.</p>
+      <p class="lede">Joule is middleware that makes energy a first-class metric in AI applications. It measures the energy and carbon behind every inference, then optimizes, caches, and routes requests to use less electricity, without trading away answer quality.</p>
       <div class="hero-actions">
         <a class="btn btn-primary" href="https://github.com/wuisabel-gif/Joule">Get it on GitHub <span class="arr">→</span></a>
         <a class="btn btn-ghost" href="#architecture">See the pipeline</a>
       </div>
 
       <a class="whatsnew" href="https://github.com/wuisabel-gif/Joule/releases/latest">
-        <span class="tag">v0.7.1</span> New: send only the history that matters, ranked by MemoryWhale <span class="arr">→</span>
+        <span class="tag">v0.7.1</span> New: history trimming, benchmarked on LongMemEval <span class="arr">→</span>
       </a>
 
-      <div class="readout" role="img" aria-label="Example: a request estimated at 1820 joules, reduced to 1074 joules — a 41 percent reduction.">
-        <div class="readout-top"><span>Inference&nbsp;·&nbsp;estimated energy</span><div class="dots" aria-hidden="true"><i></i><i></i><i></i></div></div>
+      <div class="readout" role="img" aria-label="Example: a request estimated at 1820 joules, reduced to 1074 joules, a 41 percent reduction.">
+        <div class="readout-top"><span>Example request&nbsp;·&nbsp;estimated energy</span><div class="dots" aria-hidden="true"><i></i><i></i><i></i></div></div>
         <div class="readout-body">
           <div class="ro-cell">
             <div class="ro-k">Baseline</div>
@@ -504,7 +544,7 @@
       </div>
       <div class="stat">
         <div class="n">≈0</div>
-        <div class="l">quality lost — optimizations stay measurable and reversible</div>
+        <div class="l">quality lost: optimizations stay measurable and reversible</div>
       </div>
     </div>
   </section>
@@ -523,7 +563,7 @@
           <div class="idx">01</div>
           <div>
             <h3>Measure before optimizing</h3>
-            <p>Energy should be observable. Every inference exposes latency, input and output tokens, estimated energy in joules, electricity in Wh, CO₂, and cost — before a single optimization runs.</p>
+            <p>Energy should be observable. Every inference exposes latency, input and output tokens, estimated energy in joules, electricity in Wh, CO₂, and cost, before a single optimization runs.</p>
             <div class="demo"><span class="hot">⊳ measured</span> &nbsp;1,820 J&nbsp;·&nbsp;0.51 Wh&nbsp;·&nbsp;0.23 g CO₂&nbsp;·&nbsp;$0.0034</div>
           </div>
         </div>
@@ -531,14 +571,14 @@
           <div class="idx">02</div>
           <div>
             <h3>Quality first</h3>
-            <p>Reducing energy must never meaningfully reduce answer quality. Every pass is measurable and reversible, so you can see exactly what an optimization traded — and undo it.</p>
+            <p>Reducing energy must never meaningfully reduce answer quality. Every pass is measurable and reversible, so you can see exactly what an optimization traded, and undo it.</p>
           </div>
         </div>
         <div class="principle reveal">
           <div class="idx">03</div>
           <div>
             <h3>Model agnostic</h3>
-            <p>The pipeline stays independent of the model vendor. Point it at OpenAI, Anthropic, Gemini, Ollama, LM Studio, vLLM, or llama.cpp — the optimization logic doesn't change.</p>
+            <p>The pipeline stays independent of the model vendor. Point it at OpenAI, Anthropic, Gemini, Ollama, LM Studio, vLLM, or llama.cpp; the optimization logic doesn't change.</p>
             <div class="demo"><span class="ok">openai</span> · <span class="ok">anthropic</span> · <span class="ok">gemini</span> · <span class="ok">ollama</span> · <span class="ok">vllm</span> · <span class="ok">llama.cpp</span></div>
           </div>
         </div>
@@ -546,7 +586,7 @@
           <div class="idx">04</div>
           <div>
             <h3>Transparent</h3>
-            <p>Nothing happens invisibly. Joule explains every optimization it applies and reports the estimated energy it saved, per request — in headers and in a human-readable summary.</p>
+            <p>Nothing happens invisibly. Joule explains every optimization it applies and reports the estimated energy it saved, per request, in headers and in a human-readable summary.</p>
           </div>
         </div>
       </div>
@@ -574,11 +614,11 @@
           <div class="core-top"><span class="t">Joule</span><span class="s">OpenAI-compatible proxy</span></div>
           <div class="mods">
             <div class="mod"><div class="mh"><i></i><span class="mn">Proxy</span></div><p class="md">Receives requests (OpenAI-compatible) with timeouts, retries, and per-provider circuit breaking.</p></div>
-            <div class="mod"><div class="mh"><i></i><span class="mn">Optimizer</span></div><p class="md">Removes duplicated context, compresses prompts, trims verbosity, recommends output limits.</p></div>
-            <div class="mod"><div class="mh"><i></i><span class="mn">Cache</span></div><p class="md">Avoids repeated inference — exact-match and semantic (embedding-similarity).</p></div>
-            <div class="mod"><div class="mh"><i></i><span class="mn">Router</span></div><p class="md">Selects a provider/model by support, estimated energy, grid carbon intensity (live-feed capable), or task complexity — static · model · greenest · carbon · complexity.</p></div>
+            <div class="mod"><div class="mh"><i></i><span class="mn">Optimizer</span></div><p class="md">Removes duplicated context, keeps only the relevant chat history (ranked by MemoryWhale), trims verbosity, recommends output limits.</p></div>
+            <div class="mod"><div class="mh"><i></i><span class="mn">Cache</span></div><p class="md">Avoids repeated inference: exact-match and semantic (embedding-similarity).</p></div>
+            <div class="mod"><div class="mh"><i></i><span class="mn">Router</span></div><p class="md">Selects a provider/model by support, estimated energy, grid carbon intensity (live-feed capable), or task complexity: static · model · greenest · carbon · complexity.</p></div>
             <div class="mod"><div class="mh"><i></i><span class="mn">Estimator</span></div><p class="md">Estimates energy from model, hardware, token count, and published benchmarks.</p></div>
-            <div class="mod"><div class="mh"><i></i><span class="mn">Metrics</span></div><p class="md">Exports joules, CO₂, cost, and savings to Prometheus, with a SQLite request log — OpenTelemetry traces next.</p></div>
+            <div class="mod"><div class="mh"><i></i><span class="mn">Metrics</span></div><p class="md">Exports joules, CO₂, cost, and savings to Prometheus, with a SQLite request log. OpenTelemetry traces next.</p></div>
           </div>
         </div>
 
@@ -618,9 +658,52 @@
         <div class="opt-copy reveal">
           <span class="eyebrow">Optimization, explained</span>
           <h3>You see every joule it saves, and how.</h3>
-          <p>Each request comes back with the passes Joule applied and the energy it estimates they saved — attached as response headers and a readable summary. Composable, intensity-gated, reversible.</p>
-          <p class="note">// real output from `joule optimize --level full` on gpt-4o — energy is an estimate</p>
+          <p>Each request comes back with the passes Joule applied and the energy it estimates they saved, attached as response headers and a readable summary. Composable, intensity-gated, reversible.</p>
+          <p class="note">// real output from `joule optimize --level full` on gpt-4o; energy is an estimate</p>
         </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== MEASURED ===================== -->
+  <section class="band" id="measured" style="background:var(--bg-2);border-block:1px solid var(--line)">
+    <div class="wrap">
+      <div class="sec-head reveal">
+        <span class="eyebrow">Measured, not claimed</span>
+        <h2>A tenth of the prompt, and the answer is still there.</h2>
+        <p>On <a href="https://github.com/wuisabel-gif/Joule/blob/main/bench/longmemeval/README.md" style="color:var(--signal)">LongMemEval</a>, a public long-term memory benchmark (470 questions, ~104,000-token chat histories), Joule's history trimming ranks old turns with MemoryWhale's retrieval engine. Plain truncation to the same size drops the oldest turns instead.</p>
+      </div>
+      <div class="bench reveal" role="figure" aria-label="Share of questions where all of the answer's evidence survives trimming, Joule versus truncation at the same size">
+        <div class="bench-legend" aria-hidden="true"><span><i style="background:#34a673"></i>Joule (ranked by relevance)</span><span><i style="background:#c2843a"></i>Truncation (drop oldest)</span></div>
+        <div class="bench-row">
+          <div class="bench-k"><b>70% cut</b>64 exchanges</div>
+          <div class="bench-bars">
+            <div class="bar recall" tabindex="0" data-tip="Joule, 64 exchanges: all evidence kept for 91.3% of 470 questions"><i style="width:91.3%"></i><span><b>91%</b> Joule</span></div>
+            <div class="bar trunc" tabindex="0" data-tip="Truncation at the same size: all evidence kept for 21.7%"><i style="width:21.7%"></i><span><b>22%</b> truncation</span></div>
+          </div>
+        </div>
+        <div class="bench-row">
+          <div class="bench-k"><b>91% cut</b>16 exchanges (default)</div>
+          <div class="bench-bars">
+            <div class="bar recall" tabindex="0" data-tip="Joule, 16 exchanges (default): all evidence kept for 80.6% of 470 questions"><i style="width:80.6%"></i><span><b>81%</b> Joule</span></div>
+            <div class="bar trunc" tabindex="0" data-tip="Truncation at the same size: all evidence kept for 4.9%"><i style="width:4.9%"></i><span><b>5%</b> truncation</span></div>
+          </div>
+        </div>
+        <div class="bench-row">
+          <div class="bench-k"><b>97% cut</b>4 exchanges</div>
+          <div class="bench-bars">
+            <div class="bar recall" tabindex="0" data-tip="Joule, 4 exchanges: all evidence kept for 58.5% of 470 questions"><i style="width:58.5%"></i><span><b>58%</b> Joule</span></div>
+            <div class="bar trunc" tabindex="0" data-tip="Truncation at the same size: all evidence kept for 1.3%"><i style="width:1.3%"></i><span><b>1%</b> truncation</span></div>
+          </div>
+        </div>
+        <p class="bench-note">Bars: share of questions where every turn holding the answer survives the trim. This measures what reaches the model, not whether it then answers correctly. Offline and reproducible: <code>cargo run --release --example longmemeval</code>.</p>
+        <details><summary>Show as a table</summary>
+          <table><thead><tr><th>Prompt cut</th><th>Kept</th><th>Joule</th><th>Truncation</th></tr></thead><tbody>
+            <tr><td>70%</td><td>64 exchanges</td><td>91.3%</td><td>21.7%</td></tr>
+            <tr><td>91%</td><td>16 exchanges (default)</td><td>80.6%</td><td>4.9%</td></tr>
+            <tr><td>97%</td><td>4 exchanges</td><td>58.5%</td><td>1.3%</td></tr>
+          </tbody></table>
+        </details>
       </div>
     </div>
   </section>
@@ -631,7 +714,7 @@
       <div class="sec-head reveal">
         <span class="eyebrow">Roadmap</span>
         <h2>Measure → optimize → route → decarbonize.</h2>
-        <p>Phase 1 ships today. Each phase builds on a working previous one — energy first, carbon last.</p>
+        <p>Phase 1 ships today. Each phase builds on a working previous one: energy first, carbon last.</p>
       </div>
 
       <div class="road">
@@ -644,7 +727,7 @@
           <div class="tasks">
             <div class="task" data-s="done"><span class="st">✓</span><span class="tx">OpenAI-compatible proxy</span><span class="tag">shipped</span></div>
             <div class="task" data-s="done"><span class="st">✓</span><span class="tx">Request metrics via Prometheus</span><span class="tag">shipped</span></div>
-            <div class="task" data-s="done"><span class="st">✓</span><span class="tx">Token accounting — real BPE tokenizer</span><span class="tag">shipped</span></div>
+            <div class="task" data-s="done"><span class="st">✓</span><span class="tx">Token accounting with a real BPE tokenizer</span><span class="tag">shipped</span></div>
             <div class="task" data-s="done"><span class="st">✓</span><span class="tx">Energy estimation, calibrated per-model</span><span class="tag">shipped</span></div>
             <div class="task" data-s="done"><span class="st">✓</span><span class="tx">CLI: serve · estimate · optimize · report · models</span><span class="tag">shipped</span></div>
           </div>
@@ -661,6 +744,7 @@
             <div class="task" data-s="done"><span class="st">✓</span><span class="tx">Per-request optimization reports</span><span class="tag">shipped</span></div>
             <div class="task" data-s="done"><span class="st">✓</span><span class="tx">Exact-match response cache</span><span class="tag">shipped</span></div>
             <div class="task" data-s="done"><span class="st">✓</span><span class="tx">Semantic (embedding) cache</span><span class="tag">shipped</span></div>
+            <div class="task" data-s="done"><span class="st">✓</span><span class="tx">History trimming ranked by MemoryWhale, benchmarked on LongMemEval</span><span class="tag">shipped</span></div>
           </div>
         </div>
 
@@ -671,8 +755,8 @@
             <div class="phase-bar"><i style="width:90%"></i></div>
           </div>
           <div class="tasks">
-            <div class="task" data-s="done"><span class="st">✓</span><span class="tx">Model routing — static · model · greenest · carbon · complexity</span><span class="tag">shipped</span></div>
-            <div class="task" data-s="done"><span class="st">✓</span><span class="tx">Multi-provider registry — OpenAI · Anthropic · Gemini</span><span class="tag">shipped</span></div>
+            <div class="task" data-s="done"><span class="st">✓</span><span class="tx">Model routing: static · model · greenest · carbon · complexity</span><span class="tag">shipped</span></div>
+            <div class="task" data-s="done"><span class="st">✓</span><span class="tx">Multi-provider registry: OpenAI · Anthropic · Gemini</span><span class="tag">shipped</span></div>
             <div class="task" data-s="planned"><span class="st">○</span><span class="tx">Dashboard</span><span class="tag">planned</span></div>
           </div>
         </div>
@@ -684,8 +768,8 @@
             <div class="phase-bar"><i style="width:55%"></i></div>
           </div>
           <div class="tasks">
-            <div class="task" data-s="done"><span class="st">✓</span><span class="tx">Carbon-aware routing — region-based</span><span class="tag">shipped</span></div>
-            <div class="task" data-s="done"><span class="st">✓</span><span class="tx">Live electricity-grid integration — UK, CO2 Signal, Electricity Maps</span><span class="tag">shipped</span></div>
+            <div class="task" data-s="done"><span class="st">✓</span><span class="tx">Carbon-aware routing, region-based</span><span class="tag">shipped</span></div>
+            <div class="task" data-s="done"><span class="st">✓</span><span class="tx">Live electricity-grid integration: UK, CO2 Signal, Electricity Maps</span><span class="tag">shipped</span></div>
             <div class="task" data-s="planned"><span class="st">○</span><span class="tx">Carbon-aware scheduling</span><span class="tag">planned</span></div>
             <div class="task" data-s="planned"><span class="st">○</span><span class="tx">Automatic optimization recommendations</span><span class="tag">planned</span></div>
           </div>
@@ -708,6 +792,22 @@
   </section>
 
   <!-- ===================== TECH / START ===================== -->
+  <!-- ===================== FAMILY ===================== -->
+  <section class="band" id="family">
+    <div class="wrap">
+      <div class="sec-head reveal">
+        <span class="eyebrow">The family</span>
+        <h2>Three tools, one memory.</h2>
+        <p>Joule is one of three local-first projects that work alone and do more together.</p>
+      </div>
+      <div class="family reveal">
+        <div class="fam"><h3>⚡ Joule</h3><p>Measures and cuts the energy of every LLM request. Its history trimming is ranked by MemoryWhale's retrieval engine.</p></div>
+        <div class="fam"><h3><a href="https://github.com/wuisabel-gif/MemWhale">🐋 MemoryWhale ↗</a></h3><p>Local memory of commands, errors, and fixes for you and your coding agents. On LongMemEval, its search puts the right past session in the top 5 for 97% of questions.</p></div>
+        <div class="fam"><h3><a href="https://github.com/wuisabel-gif/Delphin">🐬 Delphin ↗</a></h3><p>Keep typing while your agent thinks. With <code>delphin --memorywhale -- claude</code>, errors get a live hint from memory.</p></div>
+      </div>
+    </div>
+  </section>
+
   <section class="band--tight band" id="start-section">
     <div class="wrap reveal">
       <span class="eyebrow">Built in Rust</span>
@@ -716,7 +816,11 @@
         <span class="chip">Rust</span><span class="chip">Tokio</span><span class="chip">Axum</span>
         <span class="chip">Serde</span><span class="chip">SQLite</span><span class="chip">OpenTelemetry</span><span class="chip">Prometheus</span>
       </div>
-      <div class="binary">$ <b>joule</b> serve --upstream https://api.openai.com &nbsp;<span style="color:var(--ink-3)"># drop-in, OpenAI-compatible</span></div>
+      <div class="install">
+        <div class="binary">$ brew install wuisabel-gif/joule/joule &nbsp;<span style="color:var(--ink-3)"># macOS / Linux</span></div>
+        <div class="binary">$ cargo install joule-proxy &nbsp;<span style="color:var(--ink-3)"># the crate is joule-proxy; the binary is joule</span></div>
+        <div class="binary">$ <b>joule</b> serve --upstream https://api.openai.com &nbsp;<span style="color:var(--ink-3)"># drop-in, OpenAI-compatible</span></div>
+      </div>
     </div>
   </section>
 
@@ -747,7 +851,7 @@
       </div>
       <div class="foot-note">
         <small>v0.7.1 · © 2026 Joule contributors · Apache-2.0 · Energy figures are calibrated estimates, not meter readings.</small>
-        <span class="saver" title="Animation pauses when off-screen or in a background tab"><span class="pulse" aria-hidden="true"></span>This page pauses its animation when you look away — to save a few joules.</span>
+        <span class="saver" title="Animation pauses when off-screen or in a background tab"><span class="pulse" aria-hidden="true"></span>This page pauses its animation when you look away, to save a few joules.</span>
       </div>
     </div>
   </footer>
