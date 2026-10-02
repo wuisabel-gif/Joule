@@ -265,12 +265,14 @@ cargo build --release
 # single portable binary at target/release/joule
 ```
 
-Or with Docker:
+Or with Docker, using the published image:
 
 ```sh
-docker build -t joule .
-docker run -p 8080:8080 -e JOULE_UPSTREAM=https://api.openai.com joule
+docker run -p 8080:8080 -e JOULE_UPSTREAM=https://api.openai.com ghcr.io/wuisabel-gif/joule
 ```
+
+To build it yourself instead: `docker build -t joule .` and run `joule` in place
+of the image name.
 
 ## Quickstart (no API key, local Ollama)
 

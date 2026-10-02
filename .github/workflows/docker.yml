@@ -1,0 +1,48 @@
+name: Docker image
+
+# Publishes ghcr.io/wuisabel-gif/joule when a GitHub release is published:
+# tags :<version> (from the release tag, without the leading v) and :latest.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to build (e.g. v0.7.1)
+        required: true
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  image:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name || inputs.tag }}
+      - name: Image tags
+        id: tags
+        run: |
+          tag="${{ github.event.release.tag_name || inputs.tag }}"
+          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      # ponytail: linux/amd64 only; Apple Silicon Docker runs it under emulation.
+      # Add linux/arm64 with a native ubuntu-24.04-arm job if that is too slow.
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          platforms: linux/amd64
+          tags: |
+            ghcr.io/wuisabel-gif/joule:${{ steps.tags.outputs.version }}
+            ghcr.io/wuisabel-gif/joule:latest
+          labels: |
+            org.opencontainers.image.source=https://github.com/wuisabel-gif/Joule
+            org.opencontainers.image.description=Energy-aware optimization middleware for LLM inference
+            org.opencontainers.image.licenses=Apache-2.0
