@@ -17,23 +17,17 @@
 //! messages until the prompt is as short as context-recall's), so the
 //! comparison is ranking against recency at equal cost.
 
+mod lme_common;
+
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::PathBuf;
 
 use joule_proxy::optimizer::recall::ContextRecall;
 use joule_proxy::optimizer::Pass;
-use joule_proxy::tokens::estimate_prompt_tokens;
+use lme_common::{build_messages, costs, evidence, tokens, truncate, Turn, KEEP_RECENT, MODEL};
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
-
-#[derive(Deserialize)]
-struct Turn {
-    role: String,
-    content: String,
-    #[serde(default)]
-    has_answer: bool,
-}
+use serde_json::json;
 
 #[derive(Deserialize)]
 struct Item {
@@ -75,40 +69,7 @@ impl Score {
     }
 }
 
-const MODEL: &str = "gpt-4o";
-const KEEP_RECENT: usize = 6;
 const BUDGETS: [usize; 3] = [4, 16, 64];
-
-fn tokens(messages: &[Value]) -> u64 {
-    estimate_prompt_tokens(&json!({ "model": MODEL, "messages": messages }))
-}
-
-/// Evidence turns among `messages`.
-fn evidence(messages: &[Value]) -> usize {
-    messages.iter().filter(|m| m["_evidence"] == true).count()
-}
-
-/// Drop the oldest non-system messages until the prompt fits `budget` tokens.
-/// The last message (the question) always stays.
-fn truncate(messages: &[Value], costs: &[u64], budget: u64) -> Vec<Value> {
-    let mut total: u64 = costs.iter().sum::<u64>() + 3;
-    let mut drop = vec![false; messages.len()];
-    for i in 0..messages.len() - 1 {
-        if total <= budget {
-            break;
-        }
-        if messages[i]["role"] != "system" {
-            drop[i] = true;
-            total -= costs[i];
-        }
-    }
-    messages
-        .iter()
-        .zip(drop)
-        .filter(|(_, d)| !d)
-        .map(|(m, _)| m.clone())
-        .collect()
-}
 
 fn main() -> anyhow::Result<()> {
     let mut args = std::env::args().skip(1);
@@ -122,33 +83,19 @@ fn main() -> anyhow::Result<()> {
     let mut scores: BTreeMap<String, Score> = BTreeMap::new();
     let mut skipped_no_evidence = 0;
     for item in items.iter().filter(|i| !i.question_id.ends_with("_abs")) {
-        anyhow::ensure!(
-            item.haystack_dates.len() == item.haystack_sessions.len(),
-            "{}: dates and sessions differ in length",
-            item.question_id
-        );
-        // Sessions in date order ("2023/05/20 (Sat) 02:21" sorts as text).
-        let mut order: Vec<usize> = (0..item.haystack_sessions.len()).collect();
-        order.sort_by(|&a, &b| item.haystack_dates[a].cmp(&item.haystack_dates[b]));
-        let mut messages =
-            vec![json!({"role": "system", "content": "You are a helpful assistant."})];
-        for s in order {
-            for t in &item.haystack_sessions[s] {
-                messages
-                    .push(json!({"role": t.role, "content": t.content, "_evidence": t.has_answer}));
-            }
-        }
-        messages.push(json!({"role": "user", "content": item.question}));
+        let messages = build_messages(
+            &item.question_id,
+            &item.question,
+            &item.haystack_dates,
+            &item.haystack_sessions,
+        )?;
         let total = evidence(&messages);
         if total == 0 {
             skipped_no_evidence += 1;
             continue;
         }
         let before = tokens(&messages);
-        let costs: Vec<u64> = messages
-            .iter()
-            .map(|m| tokens(std::slice::from_ref(m)) - 3)
-            .collect();
+        let costs = costs(&messages);
 
         for k in BUDGETS {
             let mut req = json!({ "model": MODEL, "messages": messages });
