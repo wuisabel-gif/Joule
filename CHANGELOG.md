@@ -6,6 +6,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- **Answer-quality benchmark for `context-recall`**
+  (`cargo run --release --example longmemeval_answers`): sends LongMemEval
+  requests trimmed by `context-recall` and by same-size truncation to an
+  OpenAI-compatible model (local Ollama by default) and grades the replies by
+  normalized answer match, with an optional yes/no judge.
+- A manual **LongMemEval** GitHub Actions workflow that verifies the pinned
+  dataset, checks the evidence benchmark still reproduces `results.json`, and
+  runs the answer benchmark on Ollama or a hosted API.
+
 ## [0.7.1] — 2026-09-30
 
 ### Changed

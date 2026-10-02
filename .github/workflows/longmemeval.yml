@@ -1,0 +1,105 @@
+name: LongMemEval
+
+# Manual run: reproduces the evidence benchmark, then grades answers from a
+# model on context-recall vs same-size truncation. See bench/longmemeval/README.md.
+on:
+  workflow_dispatch:
+    inputs:
+      model:
+        description: Model name (pulled into Ollama, or passed to base_url)
+        default: qwen2.5:0.5b
+      sample:
+        description: Questions to sample (0 = all 470)
+        default: "100"
+      k:
+        description: Older exchanges context-recall keeps
+        default: "16"
+      base_url:
+        description: OpenAI-compatible base URL; empty runs Ollama on the runner
+        default: ""
+      judge:
+        description: Also grade with a yes/no judge prompt
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  DATASET_URL: https://huggingface.co/datasets/xiaowu0162/longmemeval/resolve/2ec2a557f339b6c0369619b1ed5793734cc87533/longmemeval_s
+  DATASET_SHA256: 08d8dad4be43ee2049a22ff5674eb86725d0ce5ff434cde2627e5e8e7e117894
+
+jobs:
+  longmemeval:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Download dataset
+        run: |
+          curl -fL --retry 3 -o longmemeval_s.json "$DATASET_URL"
+          echo "$DATASET_SHA256  longmemeval_s.json" | sha256sum -c -
+
+      - name: Evidence benchmark (must match committed results)
+        run: |
+          cargo run --release --example longmemeval -- longmemeval_s.json out/
+          python3 - <<'PY'
+          import json, math, sys
+          def same(a, b):
+              if isinstance(a, dict):
+                  return isinstance(b, dict) and a.keys() == b.keys() and all(same(a[k], b[k]) for k in a)
+              if isinstance(a, float) or isinstance(b, float):
+                  return math.isclose(a, b, rel_tol=1e-9)
+              return a == b
+          new = json.load(open("out/results.json"))
+          old = json.load(open("bench/longmemeval/results.json"))
+          if not same(new, old):
+              print("out/results.json differs from bench/longmemeval/results.json")
+              sys.exit(1)
+          print("evidence benchmark reproduces bench/longmemeval/results.json")
+          PY
+
+      - name: Start Ollama
+        if: inputs.base_url == ''
+        env:
+          MODEL: ${{ inputs.model }}
+        run: |
+          curl -fsSL https://ollama.com/install.sh | sh
+          sudo systemctl stop ollama 2>/dev/null || true
+          # Without a larger context, Ollama silently cuts long prompts.
+          OLLAMA_CONTEXT_LENGTH=32768 nohup ollama serve > ollama.log 2>&1 &
+          for _ in $(seq 60); do curl -sf http://127.0.0.1:11434/api/version && break; sleep 1; done
+          ollama pull "$MODEL"
+
+      - name: Answer quality
+        env:
+          MODEL: ${{ inputs.model }}
+          SAMPLE: ${{ inputs.sample }}
+          K: ${{ inputs.k }}
+          BASE_URL: ${{ inputs.base_url }}
+          JUDGE: ${{ inputs.judge }}
+          LME_API_KEY: ${{ secrets.LME_API_KEY }}
+        run: |
+          args=(--model "$MODEL" --sample "$SAMPLE" --k "$K" --out "out/answers-${MODEL//[:\/]/-}.json")
+          [ -n "$BASE_URL" ] && args+=(--base-url "$BASE_URL")
+          [ "$JUDGE" = "true" ] && args+=(--judge)
+          cargo run --release --example longmemeval_answers -- longmemeval_s.json "${args[@]}" | tee out/summary.txt
+          { echo '```'; cat out/summary.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: longmemeval-results
+          path: |
+            out/
+            ollama.log
+          if-no-files-found: ignore
