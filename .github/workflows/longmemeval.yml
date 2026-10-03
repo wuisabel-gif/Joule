@@ -21,6 +21,9 @@ on:
         description: Also grade with a yes/no judge prompt
         type: boolean
         default: false
+      max_minutes:
+        description: Stop starting new questions after this many minutes (job limit is 300)
+        default: "240"
 
 permissions:
   contents: read
@@ -86,9 +89,10 @@ jobs:
           K: ${{ inputs.k }}
           BASE_URL: ${{ inputs.base_url }}
           JUDGE: ${{ inputs.judge }}
+          MAX_MINUTES: ${{ inputs.max_minutes }}
           LME_API_KEY: ${{ secrets.LME_API_KEY }}
         run: |
-          args=(--model "$MODEL" --sample "$SAMPLE" --k "$K" --out "out/answers-${MODEL//[:\/]/-}.json")
+          args=(--model "$MODEL" --sample "$SAMPLE" --k "$K" --max-minutes "$MAX_MINUTES" --out "out/answers-${MODEL//[:\/]/-}.json")
           [ -n "$BASE_URL" ] && args+=(--base-url "$BASE_URL")
           [ "$JUDGE" = "true" ] && args+=(--judge)
           cargo run --release --example longmemeval_answers -- longmemeval_s.json "${args[@]}" | tee out/summary.txt

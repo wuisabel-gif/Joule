@@ -112,6 +112,13 @@ evidence benchmark and fails unless it reproduces [`results.json`](results.json)
 then runs the answer benchmark. The summary table goes to the job summary and
 the JSON to the `longmemeval-results` artifact.
 
+The job stops starting new questions after `max_minutes` (default 240, under
+the job's 300-minute limit) and reports the questions it finished; the JSON is
+also rewritten after every question. On a CPU runner, `qwen2.5:0.5b` takes
+roughly one to two minutes per question (two trimmed requests of about 9,000
+tokens each), so about 100 questions fit in the budget at best. The first run
+(100 questions, no budget) hit the job limit before finishing.
+
 Hosted runners are CPU only, so models larger than about 1B parameters are too
 slow there. For those, set `base_url` to an OpenAI-compatible API and add its
 key as the repository secret `LME_API_KEY` (Settings, Secrets and variables,

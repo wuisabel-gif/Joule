@@ -60,6 +60,10 @@ struct Args {
     k: usize,
     #[arg(long, default_value_t = 96)]
     max_tokens: u32,
+    /// Stop starting new questions after this many minutes (0 = no limit), so a
+    /// time-limited run still ends with a report for what it finished.
+    #[arg(long, default_value_t = 0)]
+    max_minutes: u64,
     /// Also grade with a yes/no judge prompt on the same endpoint.
     #[arg(long)]
     judge: bool,
@@ -266,6 +270,13 @@ async fn main() -> anyhow::Result<()> {
     let mut tokens_after = [0u64; 2];
     let mut records = Vec::new();
     for (n, item) in pool.iter().enumerate() {
+        if args.max_minutes > 0 && started.elapsed().as_secs() >= args.max_minutes * 60 {
+            eprintln!(
+                "time budget of {} min reached after {} questions; stopping",
+                args.max_minutes, n
+            );
+            break;
+        }
         let gold = match &item.answer {
             Value::String(s) => s.clone(),
             v => v.to_string(),
@@ -350,46 +361,16 @@ async fn main() -> anyhow::Result<()> {
             started.elapsed().as_secs_f64()
         );
         records.push(record);
+        let state = (&overall, &by_type, match_disc, judge_disc, tokens_after);
+        write_report(&args, &started, pool.len(), state, &records)?;
     }
 
-    let disc = |d: [usize; 2]| {
-        json!({
-            "context_recall_only_correct": d[0],
-            "truncation_only_correct": d[1],
-            "mcnemar_exact_p": mcnemar_p(d[0], d[1]),
-        })
-    };
-    let n = pool.len().max(1) as f64;
-    let mut summary = json!({
-        "overall": overall.json(args.judge),
-        "by_question_type": by_type.iter().map(|(k, t)| (k.clone(), t.json(args.judge))).collect::<BTreeMap<_, _>>(),
-        "mean_prompt_tokens_estimated": { SYSTEMS[0]: tokens_after[0] as f64 / n, SYSTEMS[1]: tokens_after[1] as f64 / n },
-        "match_disagreements": disc(match_disc),
-    });
-    if args.judge {
-        summary["judge_disagreements"] = disc(judge_disc);
-    }
-    let out = json!({
-        "dataset": args.dataset.file_name().unwrap().to_string_lossy(),
-        "model": args.model,
-        "base_url": args.base_url,
-        "sample": pool.len(),
-        "seed": args.seed,
-        "k": args.k,
-        "keep_recent": KEEP_RECENT,
-        "temperature": 0,
-        "max_tokens": args.max_tokens,
-        "runtime_seconds": started.elapsed().as_secs(),
-        "summary": summary,
-        "questions": records,
-    });
-    if let Some(dir) = args.out.parent() {
-        fs::create_dir_all(dir)?;
-    }
-    fs::write(&args.out, serde_json::to_string_pretty(&out)? + "\n")?;
+    let state = (&overall, &by_type, match_disc, judge_disc, tokens_after);
+    write_report(&args, &started, pool.len(), state, &records)?;
 
     println!(
-        "{} questions, model {}, k={}, {:.0}s",
+        "{} of {} questions, model {}, k={}, {:.0}s",
+        records.len(),
         pool.len(),
         args.model,
         args.k,
@@ -417,6 +398,62 @@ async fn main() -> anyhow::Result<()> {
         match_disc[1],
         mcnemar_p(match_disc[0], match_disc[1])
     );
+    Ok(())
+}
+
+type State<'a> = (
+    &'a Tally,
+    &'a BTreeMap<String, Tally>,
+    [usize; 2],
+    [usize; 2],
+    [u64; 2],
+);
+
+/// Write the report for the questions answered so far. Called after every
+/// question, so an interrupted run keeps its results.
+fn write_report(
+    args: &Args,
+    started: &Instant,
+    planned: usize,
+    (overall, by_type, match_disc, judge_disc, tokens_after): State,
+    records: &[Value],
+) -> anyhow::Result<()> {
+    let disc = |d: [usize; 2]| {
+        json!({
+            "context_recall_only_correct": d[0],
+            "truncation_only_correct": d[1],
+            "mcnemar_exact_p": mcnemar_p(d[0], d[1]),
+        })
+    };
+    let n = records.len().max(1) as f64;
+    let mut summary = json!({
+        "overall": overall.json(args.judge),
+        "by_question_type": by_type.iter().map(|(k, t)| (k.clone(), t.json(args.judge))).collect::<BTreeMap<_, _>>(),
+        "mean_prompt_tokens_estimated": { SYSTEMS[0]: tokens_after[0] as f64 / n, SYSTEMS[1]: tokens_after[1] as f64 / n },
+        "match_disagreements": disc(match_disc),
+    });
+    if args.judge {
+        summary["judge_disagreements"] = disc(judge_disc);
+    }
+    let out = json!({
+        "dataset": args.dataset.file_name().unwrap().to_string_lossy(),
+        "model": args.model,
+        "base_url": args.base_url,
+        "sample": records.len(),
+        "planned_sample": planned,
+        "seed": args.seed,
+        "k": args.k,
+        "keep_recent": KEEP_RECENT,
+        "temperature": 0,
+        "max_tokens": args.max_tokens,
+        "runtime_seconds": started.elapsed().as_secs(),
+        "summary": summary,
+        "questions": records,
+    });
+    if let Some(dir) = args.out.parent() {
+        fs::create_dir_all(dir)?;
+    }
+    fs::write(&args.out, serde_json::to_string_pretty(&out)? + "\n")?;
     Ok(())
 }
 
