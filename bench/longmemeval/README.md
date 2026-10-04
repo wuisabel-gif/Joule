@@ -145,7 +145,29 @@ LME_API_KEY=... cargo run --release --example longmemeval_answers -- longmemeval
 
 ### Results
 
-**Results: pending first run.**
+First run: GitHub Actions run [37157690837](https://github.com/wuisabel-gif/Joule/actions/runs/37157690837),
+`qwen2.5:0.5b` on the CPU runner, `k` = 16, seed 7. The 240-minute budget
+covered 69 of the 100 sampled questions.
+
+| Question type | n | `context-recall` correct | Truncation correct |
+|---|---|---|---|
+| knowledge-update | 8 | 0.125 | 0.000 |
+| multi-session | 16 | 0.062 | 0.062 |
+| single-session-assistant | 10 | 0.100 | 0.000 |
+| single-session-preference | 6 | 0.000 | 0.000 |
+| single-session-user | 9 | 0.000 | 0.000 |
+| temporal-reasoning | 20 | 0.000 | 0.050 |
+| **Overall** | **69** | **0.043** (3) | **0.029** (2) |
+
+Match grader. Questions only one system got right: 3 for `context-recall`, 2
+for truncation (exact McNemar p = 1.0).
+
+**This run is inconclusive.** A 0.5B model answers under 5% of these
+questions correctly with either kind of history, so the difference between the
+two systems is noise. It shows the pipeline works end to end in the cloud (the
+evidence benchmark also reproduced on Linux); it does not show whether
+`context-recall` preserves answers. That needs a stronger model through
+`base_url`.
 
 ### Limits
 
