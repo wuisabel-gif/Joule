@@ -7,7 +7,8 @@ MIT license), a public long-term memory benchmark we did not write.
 
 The evidence benchmark below calls no model: it measures what reaches the
 model. [Answer quality](#answer-quality) sends the trimmed requests to a real
-model and grades the replies.
+model and grades the replies: with `gpt-4o-mini`, `context-recall` answered
+37% correctly against truncation's 10% at the same cost.
 
 ## Protocol
 
@@ -145,35 +146,47 @@ LME_API_KEY=... cargo run --release --example longmemeval_answers -- longmemeval
 
 ### Results
 
-First run: GitHub Actions run [37157690837](https://github.com/wuisabel-gif/Joule/actions/runs/37157690837),
-`qwen2.5:0.5b` on the CPU runner, `k` = 16, seed 7. The 240-minute budget
-covered 69 of the 100 sampled questions.
+GitHub Actions run [37272181894](https://github.com/wuisabel-gif/Joule/actions/runs/37272181894),
+`gpt-4o-mini` through OpenAI's API, `k` = 16, seed 7, all 100 sampled
+questions. Per-question replies are in
+[`answers-gpt-4o-mini.json`](answers-gpt-4o-mini.json).
 
-| Question type | n | `context-recall` correct | Truncation correct |
-|---|---|---|---|
-| knowledge-update | 8 | 0.125 | 0.000 |
-| multi-session | 16 | 0.062 | 0.062 |
-| single-session-assistant | 10 | 0.100 | 0.000 |
-| single-session-preference | 6 | 0.000 | 0.000 |
-| single-session-user | 9 | 0.000 | 0.000 |
-| temporal-reasoning | 20 | 0.000 | 0.050 |
-| **Overall** | **69** | **0.043** (3) | **0.029** (2) |
+| Question type | n | `context-recall` (match) | Truncation (match) | `context-recall` (judge) | Truncation (judge) |
+|---|---|---|---|---|---|
+| knowledge-update | 12 | 0.750 | 0.167 | 0.750 | 0.167 |
+| multi-session | 20 | 0.200 | 0.000 | 0.200 | 0.050 |
+| single-session-assistant | 16 | 0.812 | 0.375 | 1.000 | 0.375 |
+| single-session-preference | 10 | 0.000 | 0.000 | 0.100 | 0.000 |
+| single-session-user | 12 | 0.583 | 0.000 | 0.750 | 0.083 |
+| temporal-reasoning | 30 | 0.133 | 0.067 | 0.233 | 0.100 |
+| **Overall** | **100** | **0.37** | **0.10** | **0.46** | **0.13** |
 
-Match grader. Questions only one system got right: 3 for `context-recall`, 2
-for truncation (exact McNemar p = 1.0).
+Both systems sent about 8,700 prompt tokens per question (8,806 and 8,591).
 
-**This run is inconclusive.** A 0.5B model answers under 5% of these
-questions correctly with either kind of history, so the difference between the
-two systems is noise. It shows the pipeline works end to end in the cloud (the
-evidence benchmark also reproduced on Linux); it does not show whether
-`context-recall` preserves answers. That needs a stronger model through
-`base_url`.
+**At the same cost, `context-recall` answered correctly about 3.5 times as
+often as truncation.** By the match grader it was right on 37 questions and
+truncation on 10; on the questions where only one system was right,
+`context-recall` won 28 and truncation 1 (exact McNemar p = 1.1e-7). The judge
+agrees: 46 against 13, disagreements 34 to 1 (p = 2.1e-9).
+
+The gain follows the evidence benchmark: it is largest where the answer sits
+in one older session (single-session and knowledge-update questions) and
+smallest for multi-session and temporal questions, which need several
+sessions or date arithmetic that 16 kept exchanges often miss.
+
+Earlier run: `qwen2.5:0.5b` on the CPU runner
+([37157690837](https://github.com/wuisabel-gif/Joule/actions/runs/37157690837),
+69 of 100 questions in the time budget) answered under 5% correctly with
+either history, 0.043 against 0.029 (p = 1.0). That model was too weak to
+tell the systems apart.
 
 ### Limits
 
-- A 0.5B model is weak. Absolute accuracy will be low; the useful number is
-  the difference between the two systems on the same questions. Rerun with a
-  stronger model before drawing conclusions about absolute quality.
+- This compares two ways of trimming at equal cost. It does not compare
+  against the full untrimmed history, which does not fit a small model's
+  context window, so it does not say how much accuracy trimming costs.
+- `gpt-4o-mini` is a small model; absolute accuracy here is not a ceiling.
+- The judge is the same model that answered, so it can share its blind spots.
 - 100 questions is a sample, not the full set. Per-type rows have only a
   handful of questions each and are noisy.
 - The match grader is strict on wording and can miss correct paraphrases; the
