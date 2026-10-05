@@ -92,6 +92,7 @@ jobs:
           MAX_MINUTES: ${{ inputs.max_minutes }}
           LME_API_KEY: ${{ secrets.LME_API_KEY }}
         run: |
+          set -o pipefail
           args=(--model "$MODEL" --sample "$SAMPLE" --k "$K" --max-minutes "$MAX_MINUTES" --out "out/answers-${MODEL//[:\/]/-}.json")
           [ -n "$BASE_URL" ] && args+=(--base-url "$BASE_URL")
           [ "$JUDGE" = "true" ] && args+=(--judge)

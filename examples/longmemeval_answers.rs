@@ -180,12 +180,30 @@ impl Client {
             "max_tokens": max_tokens,
         });
         let mut last = None;
-        for _ in 0..3 {
+        for attempt in 0..8u32 {
             let mut req = self.http.post(&self.url).json(&body);
             if let Some(k) = &self.key {
                 req = req.bearer_auth(k);
             }
-            match req.send().await.and_then(|r| r.error_for_status()) {
+            let resp = req.send().await;
+            // Rate limits and server errors are worth waiting out: honor
+            // Retry-After when given, else back off 2, 4, 8 ... up to 60 s.
+            if let Ok(r) = &resp {
+                let status = r.status();
+                if status.as_u16() == 429 || status.is_server_error() {
+                    let wait = r
+                        .headers()
+                        .get(reqwest::header::RETRY_AFTER)
+                        .and_then(|v| v.to_str().ok()?.parse::<u64>().ok())
+                        .unwrap_or(2u64 << attempt.min(5))
+                        .min(60);
+                    eprintln!("  {status}, retrying in {wait}s");
+                    tokio::time::sleep(std::time::Duration::from_secs(wait)).await;
+                    last = Some(resp.and_then(|r| r.error_for_status()).unwrap_err());
+                    continue;
+                }
+            }
+            match resp.and_then(|r| r.error_for_status()) {
                 Ok(r) => {
                     let v: Value = r.json().await?;
                     let text = v["choices"][0]["message"]["content"]
