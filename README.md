@@ -354,8 +354,9 @@ Measured on the public [LongMemEval](bench/longmemeval/README.md) benchmark
 (470 questions, ~104,000-token histories): the default of 16 older exchanges
 cut the prompt by 91% and kept all of the answer's evidence for 81% of
 questions, where plain truncation to the same size kept it for 5%. Keeping only
-4 (the 0.7.0 default) cuts 97% but keeps all evidence for just 59%. That
-measures what reaches the model, not answer accuracy; check that on your own
+4 (the 0.7.0 default) cuts 97% but keeps all evidence for just 59%. Sent to
+`gpt-4o-mini` at the same cost, 100 sampled questions came back correct 37% of
+the time with `context-recall` and 10% with truncation. Check it on your own
 traffic with `joule eval`.
 
 ```sh
